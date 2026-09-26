@@ -1,0 +1,56 @@
+# Resolve react_native_pods.rb with node to allow for hoisting
+require Pod::Executable.execute_command('node', ['-p',
+  'require.resolve(
+    "react-native/scripts/react_native_pods.rb",
+    {paths: [process.argv[1]]},
+  )', __dir__]).strip
+
+platform :ios, min_ios_version_supported
+prepare_react_native_project!
+
+linkage = ENV['USE_FRAMEWORKS']
+if linkage != nil
+  Pod::UI.puts "Configuring Pod with #{linkage}ally linked Frameworks".green
+  use_frameworks! :linkage => linkage.to_sym
+end
+
+# Fix: Firebase Swift pods require GoogleUtilities to define modules
+pod 'GoogleUtilities', :modular_headers => true
+
+target 'Selorg' do
+  config = use_native_modules!
+
+  use_react_native!(
+    :path => config[:reactNativePath],
+    # An absolute path to your application root.
+    :app_path => "#{Pod::Config.instance.installation_root}/.."
+  )
+
+  pod 'react-native-maps', :path => '../node_modules/react-native-maps', :subspecs => ['Maps', 'Google']
+
+  post_install do |installer|
+    react_native_post_install(
+      installer,
+      config[:reactNativePath],
+      :mac_catalyst_enabled => false,
+      # :ccache_enabled => true
+    )
+
+    # Several older native modules (react-native-maps, react-native-linear-gradient,
+    # react-native-mmkv, etc.) call C functions without a matching header include,
+    # which recent Xcode toolchains treat as a hard error via
+    # -Werror=implicit-function-declaration. Relax that (and related New
+    # Architecture / modular-include warnings-as-errors) across all Pods targets
+    # rather than allowlisting one module at a time.
+    installer.pods_project.targets.each do |target|
+      target.build_configurations.each do |config|
+        config.build_settings['OTHER_CFLAGS'] = ['$(inherited)', '-Wno-error=non-modular-include-in-framework-module', '-Wno-error=deprecated-objc-isa-usage', '-Wno-error=implicit-function-declaration']
+        config.build_settings['GCC_TREAT_WARNINGS_AS_ERRORS'] = 'NO'
+        # MMKVCore's AESCrypt.cpp calls the C11 Annex K memset_s(), which some SDK
+        # header configurations only declare when this feature-test macro is set.
+        config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] ||= ['$(inherited)']
+        config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] << '__STDC_WANT_LIB_EXT1__=1'
+      end
+    end
+  end
+end
