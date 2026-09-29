@@ -1,0 +1,14 @@
+{
+	"backtraceGraph" : 
+	{
+		"commands" : [],
+		"files" : [],
+		"nodes" : []
+	},
+	"installers" : [],
+	"paths" : 
+	{
+		"build" : "lottiereactnative_autolinked_build",
+		"source" : "/Users/sudesh/Documents/untitled folder/selorg-v2/Selorg-CustomerApp-V2.0/node_modules/lottie-react-native/android/build/generated/source/codegen/jni"
+	}
+}

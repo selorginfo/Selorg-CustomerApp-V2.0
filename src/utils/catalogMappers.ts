@@ -1,10 +1,15 @@
 import type { ApiCategory, ApiProduct } from '../services/catalog.service';
 
 /**
- * Sellable units for a product card.
- * Home carousels used to read catalog `stockQuantity` only (often 0) while
- * category listings send live `availableStock`, so the same item looked sold
- * out on home and in stock in the category.
+ * Sellable units for a product card, or `null` when the API did not report
+ * stock at all (orderable, count unknown — see `Product.stockQuantity`).
+ *
+ * Endpoints disagree about stock. `/categories/:slug/products` and
+ * `/products/:id` join live store inventory into `availableStock`. Home
+ * carousels (`/sections/:key/products`) and `/collections/:slug` do NOT — they
+ * emit catalog placeholders of `stockQuantity: 0` / `stock: 0` for items that
+ * are in stock. Treating those zeros as a real count marked every home card
+ * sold out while the same item showed in stock in its category.
  */
 export function resolveListingStock(raw: {
   availableStock?: number;
@@ -13,12 +18,22 @@ export function resolveListingStock(raw: {
   isSaleable?: boolean;
   isActive?: boolean;
 }): number | null {
-  const nums = [raw.availableStock, raw.stockQuantity, raw.stock].filter(
+  // Hard availability flags outrank any count.
+  if (raw.stock === false || raw.isSaleable === false || raw.isActive === false) return 0;
+
+  // Live store stock is authoritative wherever the endpoint joins it.
+  if (typeof raw.availableStock === 'number' && Number.isFinite(raw.availableStock)) {
+    return raw.availableStock;
+  }
+
+  // No `availableStock` → inventory was not joined, so a catalog 0 means
+  // "not reported", not "sold out". Only a positive catalog count is real;
+  // otherwise fall through to null, matching the web app's resolveStockOk.
+  const catalog = [raw.stockQuantity, raw.stock].filter(
     (n): n is number => typeof n === 'number' && Number.isFinite(n),
   );
-  if (nums.length) return Math.max(...nums);
-  if (raw.stock === false || raw.isSaleable === false || raw.isActive === false) return 0;
-  return null;
+  const best = catalog.length ? Math.max(...catalog) : 0;
+  return best > 0 ? best : null;
 }
 
 /** Normalize product id fields (`id` vs `_id`) from selorg-service. */

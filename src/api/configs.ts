@@ -21,6 +21,14 @@ const configs = {
 
   /** Default per-request timeout. Uploads override this with `timeoutMs`. */
   REQUEST_TIMEOUT_MS: 20_000,
+
+  /**
+   * Cap for trying a candidate origin that still has a fallback behind it.
+   * These are local/LAN dev hosts, so a live one answers well inside this;
+   * an unroutable one (e.g. the emulator's 10.0.2.2 on a physical device)
+   * would otherwise hang for the full REQUEST_TIMEOUT_MS on every call.
+   */
+  HOST_PROBE_TIMEOUT_MS: 3_000,
 };
 
 export default configs;

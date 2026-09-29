@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../navigation/types';
@@ -38,7 +38,7 @@ export default function ProfileSetupScreen() {
   return (
     <ScreenContainer edges={['top', 'bottom']}>
       <BackButton onPress={() => navigation.goBack()} />
-      <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <View style={styles.flex}>
         <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
           <View style={styles.headTextWrap}>
             <Text style={styles.title}>Let&rsquo;s get to know you</Text>
@@ -73,7 +73,7 @@ export default function ProfileSetupScreen() {
             style={styles.input}
           />
         </ScrollView>
-      </KeyboardAvoidingView>
+      </View>
       <View style={styles.footer}>
         <PrimaryButton
           label={loading ? 'Creating…' : 'Continue'}

@@ -3,7 +3,6 @@ import {
   Animated,
   Image,
   Keyboard,
-  KeyboardAvoidingView,
   LayoutAnimation,
   Platform,
   Pressable,
@@ -184,10 +183,7 @@ export default function EnterMobileScreen() {
 
   return (
     <ScreenContainer background={colors.white} edges={['top', 'bottom']}>
-      <KeyboardAvoidingView
-        style={styles.flex}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      >
+      <View style={styles.flex}>
         <View style={styles.flex}>
           <View style={styles.heroWrap}>
             <View style={styles.heroBanner}>
@@ -352,7 +348,7 @@ export default function EnterMobileScreen() {
             </Pressable>
           </View>
         </View>
-      </KeyboardAvoidingView>
+      </View>
 
       <CountryCodeSheet
         visible={ccOpen}

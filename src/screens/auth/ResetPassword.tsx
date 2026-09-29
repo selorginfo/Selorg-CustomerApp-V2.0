@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../navigation/types';
@@ -42,7 +42,7 @@ export default function ResetPasswordScreen() {
   return (
     <ScreenContainer edges={['top', 'bottom']}>
       <BackButton onPress={() => navigation.goBack()} />
-      <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <View style={styles.flex}>
         <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
           <Text style={styles.title}>Reset Password</Text>
           <Text style={styles.sub}>Create a new password for your account</Text>
@@ -53,7 +53,7 @@ export default function ResetPasswordScreen() {
           </View>
           <PasswordRules password={password} />
         </ScrollView>
-      </KeyboardAvoidingView>
+      </View>
       <View style={styles.footer}>
         <PrimaryButton
           label={loading ? 'Resetting…' : 'Reset Password'}

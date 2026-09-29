@@ -1,5 +1,5 @@
 import React, { useRef, useState } from 'react';
-import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RouteProp } from '@react-navigation/native';
@@ -47,7 +47,7 @@ export default function TicketDetailScreen() {
         subtitle={resolved ? 'Resolved' : 'Support · online'}
         onBack={() => navigation.goBack()}
       />
-      <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <View style={styles.flex}>
         <ScrollView
           ref={scrollRef}
           contentContainerStyle={styles.msgList}
@@ -97,7 +97,7 @@ export default function TicketDetailScreen() {
             </Pressable>
           </View>
         )}
-      </KeyboardAvoidingView>
+      </View>
     </ScreenContainer>
   );
 }

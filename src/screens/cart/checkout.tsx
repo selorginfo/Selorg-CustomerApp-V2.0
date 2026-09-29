@@ -2,8 +2,6 @@ import React, { useEffect, useState } from 'react';
 import {
   Image,
   ImageSourcePropType,
-  KeyboardAvoidingView,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -195,7 +193,7 @@ export default function CheckoutScreen() {
         subtitle={`${totalItems} item${totalItems === 1 ? '' : 's'}`}
         onBack={() => navigation.goBack()}
       />
-      <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <View style={styles.flex}>
         <ScrollView
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
@@ -407,7 +405,7 @@ export default function CheckoutScreen() {
 
           <BillSummaryCard />
         </ScrollView>
-      </KeyboardAvoidingView>
+      </View>
 
       <View style={styles.bottomBar}>
         <View style={styles.bottomTotalWrap}>

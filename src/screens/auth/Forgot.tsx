@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../navigation/types';
@@ -39,7 +39,7 @@ export default function ForgotScreen() {
   return (
     <ScreenContainer edges={['top', 'bottom']}>
       <BackButton onPress={() => navigation.goBack()} />
-      <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <View style={styles.flex}>
         <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
           <Text style={styles.title}>Forgot Password?</Text>
           <Text style={styles.sub}>Enter your registered mobile number or email address</Text>
@@ -61,7 +61,7 @@ export default function ForgotScreen() {
             />
           </View>
         </ScrollView>
-      </KeyboardAvoidingView>
+      </View>
     </ScreenContainer>
   );
 }

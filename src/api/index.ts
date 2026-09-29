@@ -218,11 +218,29 @@ const performFetch = async (finalUrl: string, options: any, requestId: number) =
   }
 };
 
+/**
+ * Origin that last answered successfully. Only the first request needs to
+ * discover which dev candidate is live; remembering the winner keeps every
+ * later call from re-probing — and re-paying for — a dead host.
+ */
+let preferredHost: string | null = null;
+
+/** Exposed for tests / diagnostics. */
+export const getPreferredHost = () => preferredHost;
+export const resetPreferredHost = () => {
+  preferredHost = null;
+};
+
 const sendRequest = async (url: string, options: any, fullURL = false): Promise<any> => {
-  const hosts: string[] =
+  const candidates: string[] =
     fullURL || /^https?:\/\//i.test(url)
       ? ['']
       : Array.from(new Set([configs.API_HOST, ...configs.API_HOSTS].filter(Boolean)));
+
+  const hosts =
+    preferredHost && candidates.includes(preferredHost)
+      ? [preferredHost, ...candidates.filter(h => h !== preferredHost)]
+      : candidates;
 
   const requestId = ++requestSeq;
   let lastError: any;
@@ -231,12 +249,21 @@ const sendRequest = async (url: string, options: any, fullURL = false): Promise<
     const base = hosts[i];
     const path = base ? base + url : url;
     const finalUrl = options.query ? serializeQueryParams(path, options.query) : path;
+    const hasNext = i < hosts.length - 1;
 
     try {
-      return await performFetch(finalUrl, options, requestId);
+      // While a fallback still exists, cap the attempt: an unreachable origin
+      // should cost a short probe, not the full REQUEST_TIMEOUT_MS. The last
+      // candidate keeps the real timeout so slow-but-live servers still work.
+      const attemptOptions =
+        hasNext && options.timeoutMs == null
+          ? { ...options, timeoutMs: configs.HOST_PROBE_TIMEOUT_MS }
+          : options;
+      const result = await performFetch(finalUrl, attemptOptions, requestId);
+      if (base) preferredHost = base;
+      return result;
     } catch (err: any) {
       lastError = err?.__apiError ? err : normalizeApiError(err);
-      const hasNext = i < hosts.length - 1;
       if (hasNext && isRetryableHostError(err)) {
         console.warn(
           `[API] ${base || finalUrl} failed (${lastError.status || 'network'}), trying next host…`,

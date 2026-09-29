@@ -86,12 +86,18 @@ const getDevApiCandidates = () => {
     localCandidates.push(`http://${metroHost}:${DEV_API_PORT}${DEV_API_PATH}`);
   }
 
-  // Android emulator → host machine loopback.
+  // `adb reverse tcp:3333` (scripts/run-android.js does this for every attached
+  // device) makes `localhost` reach the host machine from a physical phone AND
+  // from an emulator, so it is the safest first guess. Order matters a lot here:
+  // a wrong guess at localhost fails in milliseconds with ECONNREFUSED, whereas
+  // the emulator-only 10.0.2.2 is simply unroutable on a real device and hangs
+  // for the full REQUEST_TIMEOUT_MS (20s) before the next candidate is tried.
+  localCandidates.push(`http://localhost:${DEV_API_PORT}${DEV_API_PATH}`);
+
+  // Android emulator without adb reverse → host machine loopback.
   if (Platform.OS === 'android') {
     localCandidates.push(`http://10.0.2.2:${DEV_API_PORT}${DEV_API_PATH}`);
   }
-
-  localCandidates.push(`http://localhost:${DEV_API_PORT}${DEV_API_PATH}`);
 
   // Explicit env values (local first if they point at LAN/loopback).
   pushCandidate(ENV_DEV_API_BASE_URL);
