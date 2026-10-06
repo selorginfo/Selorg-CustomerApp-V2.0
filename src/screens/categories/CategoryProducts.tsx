@@ -3,14 +3,12 @@ import { Image, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, Vi
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import {
-  AppBottomNav,
   Icon,
   ProductCard,
   ScreenContainer,
   SearchBar,
   Skeleton,
   StateView,
-  useBottomNavHeight,
 } from '../../components';
 import type { AppTabKey } from '../../components';
 import { colors, fontFamily, shadows } from '../../theme';
@@ -55,8 +53,6 @@ function toProductCard(p: ApiProduct) {
 }
 
 export default function CategoryProductsScreen() {
-  // The floating nav overlays the screen, so pad content out from under it.
-  const navH = useBottomNavHeight();
   const navigation = useNavigation<Nav>();
   const route = useRoute<RouteProp<RootStackParamList, 'CategoryProducts'>>();
   const { categoryId, sub: initialSub } = route.params;
@@ -136,10 +132,14 @@ export default function CategoryProductsScreen() {
   };
 
   const goTab = (key: AppTabKey) => {
+    // Cart is a root stack screen now, not one of the tabs.
+    if (key === 'cart') {
+      navigation.navigate('Cart');
+      return;
+    }
     const screen =
       key === 'home' ? 'HomeTab'
         : key === 'category' ? 'CategoriesTab'
-        : key === 'cart' ? 'CartTab'
         : key === 'order' ? 'OrdersTab'
         : 'ProfileTab';
     navigation.navigate('Main', { screen });
@@ -201,7 +201,7 @@ export default function CategoryProductsScreen() {
     return (
       <ScrollView
         style={styles.gridScroll}
-        contentContainerStyle={[styles.grid, { paddingBottom: navH }]}
+        contentContainerStyle={styles.grid}
         showsVerticalScrollIndicator={false}
       >
         {list.map(p => (
@@ -224,11 +224,13 @@ export default function CategoryProductsScreen() {
   };
 
   return (
-    <ScreenContainer edges={['top']} background={colors.white}>
+    <ScreenContainer edges={['top', 'bottom']} background={colors.white}>
       {header}
 
       <View style={styles.body}>
-        <View style={[styles.sidebar, { width: sidebarW, marginBottom: navH }]}>
+        {/* Full-height rail: margin-bottom here would detach the pane from the
+            bottom of the screen, so the nav clearance goes on its contents. */}
+        <View style={[styles.sidebar, { width: sidebarW }]}>
           <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.sidebarList}>
             {loading
               ? Array.from({ length: 6 }).map((_, i) => (
@@ -307,8 +309,6 @@ export default function CategoryProductsScreen() {
           )}
         </View>
       </View>
-
-      <AppBottomNav active="category" onNavigate={goTab} />
 
       <FilterSheet
         visible={filterOpen}

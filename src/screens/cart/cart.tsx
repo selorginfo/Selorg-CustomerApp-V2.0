@@ -10,7 +10,6 @@ import {
   QuantityStepper,
   ScreenContainer,
   StateView,
-  useBottomNavHeight,
 } from '../../components';
 import type { IconName } from '../../components';
 import { colors, fontFamily, radii } from '../../theme';
@@ -29,8 +28,6 @@ const CLEAN_TAGS: { icon: IconName; label: string }[] = [
 ];
 
 export default function CartScreen() {
-  // The floating nav overlays the screen, so pad content out from under it.
-  const navH = useBottomNavHeight();
   const navigation = useNavigation<Nav>();
   const cart = useCart();
   const { items, totalItems, coupon, discount, quantityOf, addToCart, incrementItem, decrementItem, applyCoupon, removeCoupon } = cart;
@@ -45,7 +42,7 @@ export default function CartScreen() {
   if (items.length === 0) {
     return (
       <ScreenContainer>
-        <Header title="Your cart" hideBack />
+        <Header title="Your cart" onBack={() => navigation.goBack()} />
         <View style={styles.emptyWrap}>
           <StateView
             kind="empty"
@@ -62,7 +59,7 @@ export default function CartScreen() {
 
   return (
     <ScreenContainer>
-      <Header title="Your cart" subtitle={`${totalItems} item${totalItems === 1 ? '' : 's'}`} hideBack />
+      <Header title="Your cart" subtitle={`${totalItems} item${totalItems === 1 ? '' : 's'}`} onBack={() => navigation.goBack()} />
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         <View style={styles.etaBanner}>
           <Icon name="zap" size={20} color={colors.white} />
@@ -151,10 +148,12 @@ export default function CartScreen() {
           )}
         </View>
 
-        <BillSummaryCard />
+        <View style={styles.billWrap}>
+          <BillSummaryCard />
+        </View>
       </ScrollView>
 
-      <View style={[styles.bottomBar, { marginBottom: navH }]}>
+      <View style={styles.bottomBar}>
         <PrimaryButton
           testID="cart-checkout"
           label="Proceed to Checkout"
@@ -215,6 +214,8 @@ const styles = StyleSheet.create({
   cleanHeader: { flexDirection: 'row', alignItems: 'center', gap: 7, paddingHorizontal: 16, marginBottom: 8 },
   cleanTitle: { fontFamily: fontFamily.bold, fontSize: 12, color: colors.primaryDark, letterSpacing: 0.4 },
   cleanRow: { gap: 10, paddingHorizontal: 16, paddingBottom: 4 },
+  // This screen's sections pad themselves, so the bill card needs its own gutter.
+  billWrap: { paddingHorizontal: 16 },
   cleanChip: {
     flexDirection: 'row',
     alignItems: 'center',

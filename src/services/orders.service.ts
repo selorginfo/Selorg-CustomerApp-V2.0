@@ -20,7 +20,9 @@ export type CreateOrderPayload = {
 };
 
 export interface ApiOrder {
-  _id: string;
+  /** The API returns `id`; `_id` only appears on raw/legacy documents. */
+  id?: string;
+  _id?: string;
   orderNumber?: string;
   status?: string;
   paymentStatus?: string;
@@ -75,10 +77,20 @@ export interface OrderTracking {
 export interface OrderInvoice {
   invoiceNumber?: string;
   orderNumber?: string;
+  orderDate?: string;
+  deliveryAddress?: string;
+  paymentMethod?: string;
+  /** Items carry `unitPrice`/`total`, not `price`. */
   items?: Array<Record<string, unknown>>;
   subtotal?: number;
+  handlingCharge?: number;
+  deliveryFee?: number;
+  discount?: number;
   tax?: number;
+  /** Backend sends `totalAmount`; `total` is kept for older payloads. */
+  totalAmount?: number;
   total?: number;
+  taxInfo?: { gstNumber?: string; note?: string };
   [key: string]: unknown;
 }
 

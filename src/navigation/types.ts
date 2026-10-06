@@ -3,7 +3,6 @@ import type { NavigatorScreenParams } from '@react-navigation/native';
 export type MainTabParamList = {
   HomeTab: undefined;
   CategoriesTab: undefined;
-  CartTab: undefined;
   OrdersTab: undefined;
   ProfileTab: undefined;
 };
@@ -32,6 +31,7 @@ export type RootStackParamList = {
   Reviews: { productId: string };
   WriteReview: { productId: string };
 
+  Cart: undefined;
   Checkout: undefined;
   Addresses: { fromCheckout?: boolean } | undefined;
   AddAddress: { addressId?: string } | undefined;

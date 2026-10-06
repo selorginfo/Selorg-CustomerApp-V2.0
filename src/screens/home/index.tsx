@@ -86,7 +86,12 @@ const HOME_GRID_COLS = 3;
 export default function HomeScreen() {
   const navH = useBottomNavHeight();
   const { width: screenW } = useWindowDimensions();
-  const gridItemWidth = (screenW - HOME_GRID_PAD * 2 - HOME_GRID_GAP * (HOME_GRID_COLS - 1)) / HOME_GRID_COLS;
+  // Floor the share: on fractional-dp widths (e.g. 1280px @ density 3 → 426.667dp)
+  // an exact division rounds each card up to the next whole pixel, so the row
+  // overflows by ~1px and the last card wraps, leaving a hole in the grid.
+  const gridItemWidth = Math.floor(
+    (screenW - HOME_GRID_PAD * 2 - HOME_GRID_GAP * (HOME_GRID_COLS - 1)) / HOME_GRID_COLS,
+  );
   const navigation = useNavigation<Nav>();
   const cart = useCart();
   const wishlist = useWishlist();

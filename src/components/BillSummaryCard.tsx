@@ -29,7 +29,7 @@ function Row({ label, value, bold, valueColor }: RowProps) {
  * every screen that renders it always shows the exact same numbers.
  */
 export default function BillSummaryCard() {
-  const { itemTotal, discount, deliveryFee, tip, grandTotal } = useCart();
+  const { itemTotal, discount, deliveryFee, handlingCharge, tip, grandTotal } = useCart();
 
   return (
     <View style={styles.card}>
@@ -43,6 +43,9 @@ export default function BillSummaryCard() {
         value={deliveryFee === 0 ? 'FREE' : formatCurrency(deliveryFee)}
         valueColor={deliveryFee === 0 ? colors.primary : colors.text}
       />
+      {handlingCharge > 0 ? (
+        <Row label="Handling charge" value={formatCurrency(handlingCharge)} />
+      ) : null}
       {tip > 0 ? <Row label="Delivery tip" value={formatCurrency(tip)} /> : null}
       <View style={styles.totalWrap}>
         <Row label="To pay" value={formatCurrency(grandTotal)} bold />
@@ -53,7 +56,8 @@ export default function BillSummaryCard() {
 
 const styles = StyleSheet.create({
   card: {
-    marginHorizontal: 16,
+    // No horizontal margin: the card fills its parent so it lines up with the
+    // surrounding sections. Screens without their own gutter supply one.
     marginTop: 14,
     backgroundColor: colors.white,
     borderWidth: 1,
@@ -61,7 +65,7 @@ const styles = StyleSheet.create({
     borderRadius: radii.xl,
     padding: 16,
   },
-  title: { fontFamily: fontFamily.bold, fontSize: 13.5, color: colors.text, marginBottom: 4 },
+  title: { fontFamily: fontFamily.bold, fontSize: 13.5, color: colors.text, marginBottom: 8 },
   row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 5 },
   label: { fontFamily: fontFamily.semibold, fontSize: 13.5, color: colors.textMuted },
   labelBold: { fontFamily: fontFamily.bold, color: colors.text, fontSize: 14.5 },

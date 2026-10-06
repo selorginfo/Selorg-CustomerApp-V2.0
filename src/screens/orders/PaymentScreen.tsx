@@ -52,8 +52,18 @@ export default function PaymentScreen() {
     const result = await placeOrder(method, route.params?.receiver);
     if (result.success && result.order && !result.needsGateway) {
       await wallet.refreshWallet();
-      navigation.replace('OrderPlaced', { orderId: result.order.id });
+      goToOrderPlaced(result.order.id);
     }
+  };
+
+  // Once the order exists, Cart/Checkout/Payment must not stay on the stack:
+  // backing out of the confirmation (or of Tracking, which replaces it) should
+  // land on Main, never back inside a checkout the user already completed.
+  const goToOrderPlaced = (orderId: string) => {
+    navigation.reset({
+      index: 1,
+      routes: [{ name: 'Main' }, { name: 'OrderPlaced', params: { orderId } }],
+    });
   };
 
   // Back to the method picker without losing the session or the order draft.
@@ -77,7 +87,7 @@ export default function PaymentScreen() {
     const result = await completeGatewayPayment(orderId, response ?? url);
     if (result.success && result.order) {
       await wallet.refreshWallet();
-      navigation.replace('OrderPlaced', { orderId: result.order.id });
+      goToOrderPlaced(result.order.id);
       return;
     }
     const status = String(

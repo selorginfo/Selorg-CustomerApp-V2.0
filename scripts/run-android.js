@@ -6,6 +6,9 @@
 const { execSync, spawnSync } = require('child_process');
 const path = require('path');
 
+const PORT = Number(process.env.RCT_METRO_PORT || process.env.METRO_PORT || 8082);
+const API_PORT = Number(process.env.SELORG_API_PORT || 3333);
+
 function listDevices() {
   const out = execSync('adb devices', { encoding: 'utf8' });
   return out
@@ -71,7 +74,14 @@ function pickDevice(devices) {
 function reversePorts(devices) {
   for (const id of devices) {
     try {
-      execSync(`adb -s ${quoteForCmd(id)} reverse tcp:8081 tcp:8081`, {
+      execSync(`adb -s ${quoteForCmd(id)} reverse tcp:${PORT} tcp:${PORT}`, {
+        stdio: 'inherit',
+        shell: true,
+      });
+      // selorg-service (the customer API) listens on 3333; without this the
+      // app's localhost candidate is refused and it silently falls back to the
+      // remote dev-api host, so local backend changes never reach the device.
+      execSync(`adb -s ${quoteForCmd(id)} reverse tcp:${API_PORT} tcp:${API_PORT}`, {
         stdio: 'inherit',
         shell: true,
       });
@@ -81,7 +91,7 @@ function reversePorts(devices) {
       });
       // Emulator reaches host Metro via adb reverse → localhost.
       // Physical devices need the host LAN IP if reverse is unavailable.
-      const host = id.startsWith('emulator-') ? 'localhost:8081' : '';
+      const host = id.startsWith('emulator-') ? `localhost:${PORT}` : '';
       if (host) {
         execSync(
           `adb -s ${quoteForCmd(id)} shell settings put global debug_http_host ${host}`,
@@ -117,11 +127,11 @@ const cliPath = require('fs').existsSync(cliJs) ? cliJs : fallbackCli;
 
 const result = spawnSync(
   process.execPath,
-  [cliPath, 'run-android', `--deviceId=${target}`],
+  [cliPath, 'run-android', `--deviceId=${target}`, `--port=${PORT}`],
   {
     stdio: 'inherit',
     shell: false,
-    env: { ...process.env, ANDROID_SERIAL: target },
+    env: { ...process.env, ANDROID_SERIAL: target, RCT_METRO_PORT: String(PORT) },
     cwd: path.join(__dirname, '..'),
   },
 );

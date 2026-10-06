@@ -13,6 +13,7 @@ export { default as CleanBadges } from './CleanBadges';
 export { default as StatusPill } from './StatusPill';
 export { default as ToastHost } from './ToastHost';
 export { default as BottomSheet } from './BottomSheet';
+export { default as DeliveredCelebration } from './DeliveredCelebration';
 export { default as ProductCard } from './ProductCard';
 export { default as Skeleton, SkeletonRow, SkeletonList, SkeletonGrid, SkeletonForm, SkeletonDetail } from './Skeleton';
 export { default as RangeSlider } from './RangeSlider';

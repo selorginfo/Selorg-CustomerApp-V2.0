@@ -105,6 +105,8 @@ android/bugreport-*.zip
 
 # Machine-specific API host and secrets
 .env
+.env.development
+.env.production
 .env.local
 .env.*.local
 !.env.example

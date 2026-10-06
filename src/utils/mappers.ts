@@ -24,6 +24,7 @@ export function mapApiCart(cart: ApiCart): {
   itemTotal: number;
   discount: number;
   deliveryFee: number;
+  handlingCharge: number;
   tax: number;
   total: number;
 } {
@@ -32,6 +33,9 @@ export function mapApiCart(cart: ApiCart): {
     itemTotal: cart.itemTotal ?? 0,
     discount: cart.discount ?? 0,
     deliveryFee: cart.deliveryFee ?? 0,
+    // Part of the server total; without it the bill rows do not add up to
+    // the amount charged.
+    handlingCharge: cart.handlingCharge ?? 0,
     tax: cart.tax ?? 0,
     total: cart.total ?? 0,
   };
@@ -62,27 +66,38 @@ export function toLocalOrder(raw: ApiOrder): Order {
           ? 'online'
           : undefined;
 
+  // The API formats orders with `id` (a stringified _id) and omits `_id`
+  // entirely; reading only `_id` left every order with an undefined id, which
+  // broke every request built from it (cancel, invoice, tracking).
+  const orderId = String(raw.id || raw._id || '');
+
   return {
-    id: raw._id,
-    orderNumber: raw.orderNumber || raw._id.slice(-6).toUpperCase(),
+    id: orderId,
+    orderNumber: raw.orderNumber || orderId.slice(-6).toUpperCase(),
     status: statusMap[String(raw.status || '').toLowerCase()] || 'pending',
     paymentStatus: payStatusMap[String(raw.paymentStatus || '').toLowerCase()] || 'pending',
     method,
-    items: (raw.items || []).map((it: Record<string, unknown>, idx: number) => ({
-      id: String(it._id || `item_${idx}`),
-      productId: String(it.productId || ''),
-      name: String(it.name || 'Item'),
-      unit: String(it.variant || it.unit || '1 unit'),
-      price: Number(it.price || 0),
-      mrp: Number(it.mrp || it.price || 0),
-      quantity: Number(it.quantity || 1),
-      image: undefined,
-    })),
-    itemTotal: Number(raw.subtotal || 0),
+    // Order documents store productName/variantSize/originalPrice and a
+    // fully-qualified image URL; the shorter aliases are kept as fallbacks for
+    // older records.
+    items: (raw.items || []).map((it: Record<string, unknown>, idx: number) => {
+      const imageUrl = it.image || it.imageUrl || it.thumbnail;
+      return {
+        id: String(it.id || it._id || `item_${idx}`),
+        productId: String(it.productId || ''),
+        name: String(it.productName || it.name || 'Item'),
+        unit: String(it.variantSize || it.variant || it.unit || '1 unit'),
+        price: Number(it.price || 0),
+        mrp: Number(it.originalPrice || it.mrp || it.price || 0),
+        quantity: Number(it.quantity || 1),
+        image: typeof imageUrl === 'string' && imageUrl ? { uri: imageUrl } : undefined,
+      };
+    }),
+    itemTotal: Number(raw.itemTotal ?? raw.subtotal ?? 0),
     discount: Number(raw.discount || 0),
     deliveryFee: Number(raw.deliveryFee || 0),
     tip: Number(raw.deliveryTip || 0),
-    totalBill: Number(raw.total || 0),
+    totalBill: Number(raw.totalBill ?? raw.total ?? 0),
     addressId: String(raw.addressId || ''),
     coupon: (raw.couponCode as string) || null,
     placedAt: String(raw.createdAt || new Date().toISOString()),

@@ -57,6 +57,7 @@ interface CartContextType {
   totalItems: number;
   itemTotal: number;
   deliveryFee: number;
+  handlingCharge: number;
   tax: number;
   grandTotal: number;
   addToCart: (product: CartProduct) => Promise<void>;
@@ -67,6 +68,8 @@ interface CartContextType {
   removeCoupon: () => void;
   setTip: (v: number) => void;
   refreshCart: () => Promise<void>;
+  /** Feed the pricing engine the current address zone / payment method. */
+  setPricingContext: (next: { zone?: string | null; paymentMethod?: string | null }) => void;
   mergeGuestCartOnLogin: () => Promise<void>;
   clearCart: () => Promise<void>;
 }
@@ -109,6 +112,7 @@ function applyCartResponse(
     setItemTotal: (v: number) => void;
     setDiscount: (v: number) => void;
     setDeliveryFee: (v: number) => void;
+    setHandlingCharge: (v: number) => void;
     setTax: (v: number) => void;
     setServerTotal: (v: number) => void;
   },
@@ -118,6 +122,7 @@ function applyCartResponse(
   setters.setItemTotal(mapped.itemTotal);
   setters.setDiscount(mapped.discount);
   setters.setDeliveryFee(mapped.deliveryFee);
+  setters.setHandlingCharge(mapped.handlingCharge);
   setters.setTax(mapped.tax);
   setters.setServerTotal(mapped.total);
 }
@@ -129,6 +134,14 @@ export const CartProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [tip, setTipState] = useState(0);
   const [itemTotal, setItemTotal] = useState(0);
   const [deliveryFee, setDeliveryFee] = useState(0);
+  const [handlingCharge, setHandlingCharge] = useState(0);
+  // Zone + payment method feed the server-side pricing engine. Holding them in
+  // context means any change re-runs refreshCart, so the quoted delivery fee
+  // tracks the current address and payment selection instead of going stale.
+  const [pricingContext, setPricingContextState] = useState<{
+    zone: string | null;
+    paymentMethod: string | null;
+  }>({ zone: null, paymentMethod: null });
   const [tax, setTax] = useState(0);
   const [serverTotal, setServerTotal] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -137,7 +150,19 @@ export const CartProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const isAuthenticated = () => Boolean(Storage.getItem('accessToken'));
 
   const cartSetters = useMemo(
-    () => ({ setItems, setItemTotal, setDiscount, setDeliveryFee, setTax, setServerTotal }),
+    () => ({ setItems, setItemTotal, setDiscount, setDeliveryFee, setHandlingCharge, setTax, setServerTotal }),
+    [],
+  );
+
+  const setPricingContext = useCallback(
+    (next: { zone?: string | null; paymentMethod?: string | null }) => {
+      setPricingContextState(prev => {
+        const zone = next.zone ?? null;
+        const paymentMethod = next.paymentMethod ?? null;
+        if (prev.zone === zone && prev.paymentMethod === paymentMethod) return prev;
+        return { zone, paymentMethod };
+      });
+    },
     [],
   );
 
@@ -147,22 +172,25 @@ export const CartProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       const localTotal = readGuestCart().reduce((s, i) => s + i.price * i.quantity, 0);
       setItemTotal(localTotal);
       setDeliveryFee(0);
+      setHandlingCharge(0);
       setTax(0);
       setServerTotal(localTotal);
       return;
     }
     setLoading(true);
     try {
-      const cart = await cartApi.getCart(
-        coupon ? { coupon_code: coupon, payment_method: 'upi' } : undefined,
-      );
+      const query: { coupon_code?: string; zone?: string; payment_method?: string } = {};
+      if (coupon) query.coupon_code = coupon;
+      if (pricingContext.zone) query.zone = pricingContext.zone;
+      if (pricingContext.paymentMethod) query.payment_method = pricingContext.paymentMethod;
+      const cart = await cartApi.getCart(Object.keys(query).length ? query : undefined);
       applyCartResponse(cart, cartSetters);
     } catch {
       // keep previous state
     } finally {
       setLoading(false);
     }
-  }, [coupon, cartSetters]);
+  }, [coupon, cartSetters, pricingContext]);
 
   useEffect(() => {
     refreshCart();
@@ -410,6 +438,7 @@ export const CartProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       setItems([]);
       setItemTotal(0);
       setDeliveryFee(0);
+      setHandlingCharge(0);
       setTax(0);
       setServerTotal(0);
       return;
@@ -422,6 +451,7 @@ export const CartProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       setItems([]);
       setItemTotal(0);
       setDeliveryFee(0);
+      setHandlingCharge(0);
       setTax(0);
       setServerTotal(0);
     } finally {
@@ -431,11 +461,14 @@ export const CartProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   const totalItems = useMemo(() => items.reduce((s, i) => s + i.quantity, 0), [items]);
   const grandTotal = useMemo(() => {
+    // serverTotal is the pricing engine's finalAmount, which already has the
+    // discount deducted and the fees added — subtracting discount again here
+    // under-quoted the total once the engine started returning real numbers.
     if (isAuthenticated() && serverTotal > 0) {
-      return Math.max(0, serverTotal - discount) + tip;
+      return serverTotal + tip;
     }
-    return Math.max(0, itemTotal - discount) + deliveryFee + tax + tip;
-  }, [serverTotal, itemTotal, discount, deliveryFee, tax, tip]);
+    return Math.max(0, itemTotal - discount) + deliveryFee + handlingCharge + tax + tip;
+  }, [serverTotal, itemTotal, discount, deliveryFee, handlingCharge, tax, tip]);
 
   const value = useMemo<CartContextType>(
     () => ({
@@ -448,6 +481,7 @@ export const CartProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       totalItems,
       itemTotal,
       deliveryFee,
+      handlingCharge,
       tax,
       grandTotal,
       addToCart,
@@ -458,6 +492,7 @@ export const CartProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       removeCoupon,
       setTip,
       refreshCart,
+      setPricingContext,
       mergeGuestCartOnLogin,
       clearCart,
     }),
@@ -471,6 +506,7 @@ export const CartProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       totalItems,
       itemTotal,
       deliveryFee,
+      handlingCharge,
       tax,
       grandTotal,
       addToCart,
@@ -481,6 +517,7 @@ export const CartProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       removeCoupon,
       setTip,
       refreshCart,
+      setPricingContext,
       mergeGuestCartOnLogin,
       clearCart,
     ],

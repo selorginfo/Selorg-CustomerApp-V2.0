@@ -95,7 +95,12 @@ export default function EnterMobileScreen() {
   // Sliding highlight + crossfade for the method toggle. The design offers
   // Mobile / WhatsApp / Email when logging in, but signup requires mobile
   // verification, so it shows SMS / WhatsApp only.
-  const METHODS: Method[] = signup ? ['mobile', 'whatsapp'] : ['mobile', 'whatsapp', 'email'];
+  //
+  // WhatsApp OTP is disabled for now. The 'whatsapp' branches further down and
+  // the 'whatsapp' OtpChannel in auth.service are left in place, so re-enabling
+  // is just a matter of putting it back in these lists:
+  //   const METHODS: Method[] = signup ? ['mobile', 'whatsapp'] : ['mobile', 'whatsapp', 'email'];
+  const METHODS: Method[] = signup ? ['mobile'] : ['mobile', 'email'];
   const [methodTrackW, setMethodTrackW] = useState(0);
   const methodSlide = useRef(
     new Animated.Value(METHODS.indexOf(method)),
@@ -229,41 +234,45 @@ export default function EnterMobileScreen() {
               })}
             </View>
 
-            <View
-              style={styles.methodToggle}
-              onLayout={(e) => setMethodTrackW(e.nativeEvent.layout.width)}
-            >
-              {methodHighlightW > 0 && (
-                <Animated.View
-                  pointerEvents="none"
-                  style={[
-                    styles.methodHighlight,
-                    {
-                      width: methodHighlightW,
-                      transform: [{ translateX: methodHighlightX }],
-                    },
-                  ]}
-                />
-              )}
-              {METHODS.map((id) => {
-                const on = method === id;
-                const label =
-                  id === 'mobile'
-                    ? signup ? 'SMS' : 'Mobile'
-                    : id === 'whatsapp'
-                      ? 'WhatsApp'
-                      : 'Email';
-                return (
-                  <Pressable
-                    key={id}
-                    onPress={() => switchMethod(id)}
-                    style={styles.methodBtn}
-                  >
-                    <Text style={[styles.methodLabel, on && styles.methodLabelOn]}>{label}</Text>
-                  </Pressable>
-                );
-              })}
-            </View>
+            {/* A single remaining method has nothing to toggle between, so
+                the switcher is hidden rather than showing one lone chip. */}
+            {METHODS.length > 1 ? (
+              <View
+                style={styles.methodToggle}
+                onLayout={(e) => setMethodTrackW(e.nativeEvent.layout.width)}
+              >
+                {methodHighlightW > 0 && (
+                  <Animated.View
+                    pointerEvents="none"
+                    style={[
+                      styles.methodHighlight,
+                      {
+                        width: methodHighlightW,
+                        transform: [{ translateX: methodHighlightX }],
+                      },
+                    ]}
+                  />
+                )}
+                {METHODS.map((id) => {
+                  const on = method === id;
+                  const label =
+                    id === 'mobile'
+                      ? signup ? 'SMS' : 'Mobile'
+                      : id === 'whatsapp'
+                        ? 'WhatsApp'
+                        : 'Email';
+                  return (
+                    <Pressable
+                      key={id}
+                      onPress={() => switchMethod(id)}
+                      style={styles.methodBtn}
+                    >
+                      <Text style={[styles.methodLabel, on && styles.methodLabelOn]}>{label}</Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            ) : null}
 
             <Animated.View style={{ opacity: fieldFade }}>
             {method === 'email' ? (

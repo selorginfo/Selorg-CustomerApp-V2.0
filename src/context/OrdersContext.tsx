@@ -345,6 +345,11 @@ export const OrdersProvider: React.FC<{ children: ReactNode }> = ({ children }) 
   const canCancel = useCallback((order: Order) => ['pending', 'confirmed'].includes(order.status), []);
 
   const cancelOrder = useCallback(async (order: Order, reason?: string) => {
+    if (!order.id) {
+      showToast('Could not cancel, try again', 'err');
+      console.warn('[orders] cancel attempted without an order id', order.orderNumber);
+      return;
+    }
     try {
       await ordersApi.cancelOrder(order.id, reason);
       const update = (o: Order): Order =>
@@ -358,8 +363,11 @@ export const OrdersProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       setOrders(prev => prev.map(update));
       setActiveOrder(prev => (prev?.id === order.id ? null : prev));
       showToast('Order cancelled · refund initiated');
-    } catch {
-      showToast('Could not cancel, try again', 'err');
+    } catch (err) {
+      // Surface the backend's own reason (policy window, status, daily cap)
+      // instead of a blanket retry prompt.
+      showToast(getErrorMessage(err, 'Could not cancel, try again'), 'err');
+      console.warn('[orders] cancel failed', err);
     }
   }, []);
 

@@ -20,6 +20,7 @@ import ProductDetailScreen from '../screens/product/ProductDetail';
 import ReviewsScreen from '../screens/product/Reviews';
 import WriteReviewScreen from '../screens/product/WriteReview';
 
+import CartScreen from '../screens/cart/cart';
 import CheckoutScreen from '../screens/cart/checkout';
 import AddressesScreen from '../screens/profile/addresses';
 import AddAddressScreen from '../screens/profile/AddAddress';
@@ -80,6 +81,7 @@ export default function RootNavigator() {
         <Stack.Screen name="Reviews" component={ReviewsScreen} />
         <Stack.Screen name="WriteReview" component={WriteReviewScreen} />
 
+        <Stack.Screen name="Cart" component={CartScreen} />
         <Stack.Screen name="Checkout" component={CheckoutScreen} />
         <Stack.Screen name="Addresses" component={AddressesScreen} />
         <Stack.Screen name="AddAddress" component={AddAddressScreen} />

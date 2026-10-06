@@ -10,6 +10,7 @@ import { ordersApi } from '../../services/orders.service';
 import type { OrderInvoice } from '../../services/orders.service';
 import { formatCurrency } from '../../utils/format';
 import { showToast } from '../../utils/toast';
+import { shareInvoicePdf } from '../../utils/invoicePdf';
 import { RootStackParamList } from '../../navigation/types';
 
 const PAY_LABEL: Record<string, string> = {
@@ -26,6 +27,7 @@ export default function Invoice() {
   const { addresses } = useAddress();
   const [invoice, setInvoice] = useState<OrderInvoice | null>(null);
   const [loading, setLoading] = useState(true);
+  const [downloading, setDownloading] = useState(false);
 
   const order = orders.find(o => o.id === route.params?.orderId);
 
@@ -68,14 +70,55 @@ export default function Invoice() {
   const items = invoice?.items?.length
     ? invoice.items.map((it, idx) => ({
         id: String(it._id || idx),
-        name: String(it.name || 'Item'),
+        name: String(it.name || it.productName || 'Item'),
         quantity: Number(it.quantity || 1),
-        price: Number(it.price || 0),
+        // The invoice payload names this `unitPrice`; `price` is the fallback
+        // for older records.
+        price: Number(it.unitPrice ?? it.price ?? 0),
       }))
     : order.items;
 
-  const total = invoice?.total ?? order.totalBill;
+  const total = invoice?.totalAmount ?? invoice?.total ?? order.totalBill;
   const subtotal = invoice?.subtotal ?? order.itemTotal;
+
+  const handleDownload = async () => {
+    if (downloading) return;
+    setDownloading(true);
+    try {
+      const result = await shareInvoicePdf({
+        invoiceNumber: invoice?.invoiceNumber || order.orderNumber,
+        orderNumber: order.orderNumber,
+        placedDate,
+        billedToLabel: address?.label,
+        billedToAddress:
+          invoice?.deliveryAddress ||
+          (address
+            ? [address.line1, address.line2, address.city, address.pincode].filter(Boolean).join(', ')
+            : undefined),
+        paymentLabel:
+          invoice?.paymentMethod || PAY_LABEL[order.paymentStatus] || order.paymentStatus,
+        rows: items.map(it => ({ name: it.name, quantity: it.quantity, price: it.price })),
+        subtotal,
+        discount: order.discount,
+        deliveryFee: order.deliveryFee,
+        tip: order.tip,
+        total,
+        gstNote: invoice?.taxInfo?.gstNumber,
+      });
+      if (result.kind === 'saved') {
+        showToast(`Saved to Downloads as ${result.fileName}`);
+      }
+    } catch (err) {
+      // A dismissed share sheet is not a failure worth alarming the user over.
+      const message = err instanceof Error ? err.message : String(err);
+      if (!/cancel/i.test(message)) {
+        showToast('Could not prepare the invoice PDF', 'err');
+        console.warn('[invoice] pdf export failed', err);
+      }
+    } finally {
+      setDownloading(false);
+    }
+  };
 
   return (
     <ScreenContainer>
@@ -155,9 +198,10 @@ export default function Invoice() {
 
           <View style={styles.shareWrap}>
             <PrimaryButton
-              label="Share / Download"
+              label={downloading ? 'Preparing invoice…' : 'Share / Download'}
               icon="download"
-              onPress={() => showToast('Invoice ready — download coming soon', 'info')}
+              disabled={downloading}
+              onPress={handleDownload}
             />
           </View>
         </ScrollView>

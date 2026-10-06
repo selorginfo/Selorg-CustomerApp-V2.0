@@ -16,7 +16,6 @@ export const ROUTES = {
   MAIN: 'Main',
   HOME_TAB: 'HomeTab',
   CATEGORIES_TAB: 'CategoriesTab',
-  CART_TAB: 'CartTab',
   ORDERS_TAB: 'OrdersTab',
   PROFILE_TAB: 'ProfileTab',
 
@@ -28,6 +27,7 @@ export const ROUTES = {
   REVIEWS: 'Reviews',
   WRITE_REVIEW: 'WriteReview',
 
+  CART: 'Cart',
   CHECKOUT: 'Checkout',
   ADDRESSES: 'Addresses',
   ADD_ADDRESS: 'AddAddress',

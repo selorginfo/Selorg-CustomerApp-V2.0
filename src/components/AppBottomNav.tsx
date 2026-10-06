@@ -12,7 +12,9 @@ export type AppTabKey = 'home' | 'category' | 'cart' | 'order' | 'profile';
 const TABS: { key: AppTabKey; label: string; icon: IconName; route: string }[] = [
   { key: 'home', label: 'Home', icon: 'home', route: 'HomeTab' },
   { key: 'category', label: 'Categories', icon: 'categories', route: 'CategoriesTab' },
-  { key: 'cart', label: 'Cart', icon: 'shoppingCart', route: 'CartTab' },
+  // Cart is a root stack screen, not a tab: it covers the bar instead of
+  // sitting behind it. `route` is the root route name the FAB pushes.
+  { key: 'cart', label: 'Cart', icon: 'shoppingCart', route: 'Cart' },
   { key: 'order', label: 'Orders', icon: 'receipt', route: 'OrdersTab' },
   { key: 'profile', label: 'Account', icon: 'user', route: 'ProfileTab' },
 ];
@@ -165,6 +167,12 @@ export function MainTabBar({ state, navigation }: BottomTabBarProps) {
   const onPress = (key: AppTabKey) => {
     const tab = TABS.find(t => t.key === key);
     if (!tab) return;
+    // Cart lives on the parent stack. An unhandled navigate bubbles up from the
+    // tab navigator, so this pushes the full screen and hides this bar with it.
+    if (key === 'cart') {
+      navigation.navigate(tab.route as never);
+      return;
+    }
     const event = navigation.emit({
       type: 'tabPress',
       target: state.routes.find(r => r.name === tab.route)?.key,

@@ -6,6 +6,8 @@
     "android": "node scripts/run-android.js",
     "ios": "react-native run-ios",
     "lint": "eslint .",
+    "env:dev": "node -e \"require('fs').copyFileSync('.env.development','.env')\"",
+    "env:prod": "node -e \"require('fs').copyFileSync('.env.production','.env')\"",
     "start": "node scripts/start-metro.js",
     "start:reset": "node scripts/start-metro.js --reset-cache",
     "start:android:dev": "node scripts/run-android.js",

@@ -61,14 +61,22 @@ const RATING_STEPS = [4, 3, 2, 1];
 interface Filterable {
   price: number;
   mrp: number;
-  stockQuantity: number;
+  /**
+   * `null` means stock was not reported by the catalog, which is distinct from
+   * `0` ("sold out") — `resolveListingStock` returns both. Declaring this as a
+   * plain `number` broke inference at every call site, silently widening the
+   * result to `Filterable[]` and erasing the caller's product type.
+   */
+  stockQuantity: number | null;
   rating?: number;
 }
 
 export function applyProductFilters<T extends Filterable>(products: T[], filters: ProductFilters): T[] {
   let list = products.slice();
 
-  if (filters.stockOnly || filters.availability === 'in') list = list.filter(p => p.stockQuantity > 0);
+  // ProductCard treats only an explicit 0 as out of stock, so unreported
+  // (null) stock stays visible here too.
+  if (filters.stockOnly || filters.availability === 'in') list = list.filter(p => p.stockQuantity !== 0);
   if (filters.availability === 'out') list = list.filter(p => p.stockQuantity === 0);
   if (filters.discountedOnly) list = list.filter(p => p.mrp > p.price);
   if (filters.price) {

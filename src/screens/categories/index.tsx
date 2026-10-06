@@ -1,8 +1,8 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { ScreenContainer, SearchBar, StateView, Skeleton, useBottomNavHeight } from '../../components';
+import { Header, Icon, ScreenContainer, SearchBar, StateView, Skeleton, useBottomNavHeight } from '../../components';
 import { colors, fontFamily, radii } from '../../theme';
 import { catalogApi } from '../../services/catalog.service';
 import type { ApiCategory } from '../../services/catalog.service';
@@ -17,6 +17,9 @@ export default function CategoriesScreen() {
   const [categories, setCategories] = useState<ApiCategory[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
+  // Search is off-screen until the header icon is tapped.
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [query, setQuery] = useState('');
 
   const load = useCallback(() => {
     setLoading(true);
@@ -31,18 +34,76 @@ export default function CategoriesScreen() {
     load();
   }, [load]);
 
+  const subsOf = useCallback(
+    (c: ApiCategory) =>
+      c.children?.map(ch => ({
+        id: ch._id,
+        name: ch.name,
+        // The catalog ships no subcategory artwork, so tiles borrow the
+        // parent category's photo rather than showing an empty circle.
+        image: ch.image || c.image,
+        slug: ch.slug || ch._id,
+      }))
+      || c.subs?.map(s => ({ id: s, name: s, image: c.image, slug: s }))
+      || [],
+    [],
+  );
+
+  // Match on the category name or any of its subcategories, keeping only the
+  // subcategories that matched so the results stay readable.
+  const visibleCategories = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return categories;
+    return categories.reduce<ApiCategory[]>((acc, c) => {
+      if (c.name?.toLowerCase().includes(q)) {
+        acc.push(c);
+        return acc;
+      }
+      const matched = subsOf(c).filter(sub => sub.name?.toLowerCase().includes(q));
+      if (matched.length) {
+        acc.push({ ...c, children: undefined, subs: matched.map(m => m.name) } as ApiCategory);
+      }
+      return acc;
+    }, []);
+  }, [categories, query, subsOf]);
+
+  const closeSearch = () => {
+    setSearchOpen(false);
+    setQuery('');
+  };
+
   return (
     <ScreenContainer>
-      <View style={styles.header}>
-        <Text style={styles.title}>All Categories</Text>
+      <Header
+        title="All Categories"
+        hideBack
+        right={
+          <Pressable
+            onPress={() => (searchOpen ? closeSearch() : setSearchOpen(true))}
+            hitSlop={10}
+            accessibilityRole="button"
+            accessibilityLabel={searchOpen ? 'Close search' : 'Search categories'}
+            testID="categories-search-toggle"
+          >
+            <Icon name={searchOpen ? 'x' : 'search'} size={20} color={colors.text} strokeWidth={2.2} />
+          </Pressable>
+        }
+      />
+
+      {searchOpen ? (
         <View style={styles.searchWrap}>
           <SearchBar
             testID="categories-search"
             placeholder="Search categories & products…"
-            onPress={() => navigation.navigate('Search')}
+            editable
+            autoFocus
+            focused
+            value={query}
+            onChangeText={setQuery}
+            onSubmit={() => navigation.navigate('Search')}
           />
         </View>
-      </View>
+      ) : null}
 
       {loading ? (
         <ScrollView
@@ -75,15 +136,26 @@ export default function CategoriesScreen() {
           onCta={load}
           icon="wifiOff"
         />
-      ) : categories.length === 0 ? (
-        <StateView
-          kind="empty"
-          title="No categories yet"
-          message="Your store is still being stocked. Check back soon."
-          ctaLabel="Reload"
-          onCta={load}
-          icon="categories"
-        />
+      ) : visibleCategories.length === 0 ? (
+        query.trim() ? (
+          <StateView
+            kind="empty"
+            title="No matches"
+            message={`Nothing matched “${query.trim()}”. Try a different word.`}
+            ctaLabel="Clear search"
+            onCta={closeSearch}
+            icon="search"
+          />
+        ) : (
+          <StateView
+            kind="empty"
+            title="No categories yet"
+            message="Your store is still being stocked. Check back soon."
+            ctaLabel="Reload"
+            onCta={load}
+            icon="categories"
+          />
+        )
       ) : (
         <ScrollView
           style={styles.scroll}
@@ -91,19 +163,9 @@ export default function CategoriesScreen() {
           showsVerticalScrollIndicator={false}
           testID="categories-list"
         >
-          {categories.map(c => {
+          {visibleCategories.map(c => {
             const catId = c.slug || c._id;
-            const subs =
-              c.children?.map(ch => ({
-                id: ch._id,
-                name: ch.name,
-                // The catalog ships no subcategory artwork, so tiles borrow the
-                // parent category's photo rather than showing an empty circle.
-                image: ch.image || c.image,
-                slug: ch.slug || ch._id,
-              }))
-              || c.subs?.map(s => ({ id: s, name: s, image: c.image, slug: s }))
-              || [];
+            const subs = subsOf(c);
             return (
               <View key={c._id} style={styles.catBlock} testID={`category-${catId}`}>
                 <View style={styles.catHeaderRow}>
@@ -170,16 +232,9 @@ export default function CategoriesScreen() {
 }
 
 const styles = StyleSheet.create({
-  header: {
-    paddingHorizontal: 16,
-    paddingTop: 6,
-    paddingBottom: 12,
-    backgroundColor: colors.white,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  title: { fontFamily: fontFamily.bold, fontSize: 22, color: colors.text, letterSpacing: -0.2 },
-  searchWrap: { marginTop: 12 },
+  // Header now comes from the shared component; this only spaces the
+  // search field that the header icon reveals.
+  searchWrap: { paddingHorizontal: 16, paddingTop: 10, paddingBottom: 2 },
   scroll: { flex: 1 },
   scrollContent: { paddingHorizontal: 16, paddingTop: 18, paddingBottom: 24, gap: 26 },
   skBlock: { marginBottom: 8 },

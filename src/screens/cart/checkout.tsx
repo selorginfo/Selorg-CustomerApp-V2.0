@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   Image,
   ImageSourcePropType,
@@ -9,7 +9,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import BillSummaryCard from '../../components/BillSummaryCard';
 import { Header, Icon, PrimaryButton, ScreenContainer, StateView } from '../../components';
@@ -30,6 +30,13 @@ type Nav = NativeStackNavigationProp<RootStackParamList>;
 
 const TIP_OPTIONS = [0, 10, 20, 30];
 
+/** Checkout's method ids in the vocabulary the pricing engine expects. */
+const PAY_METHOD_TO_API: Record<PayMethod, string> = {
+  online: 'upi',
+  cod: 'cash',
+  wallet: 'wallet',
+};
+
 const PAY_METHODS: { id: PayMethod; icon: IconName; title: string }[] = [
   { id: 'online', icon: 'card', title: 'Pay online' },
   { id: 'wallet', icon: 'wallet', title: 'Selorg Wallet' },
@@ -42,8 +49,8 @@ function last10(value: string): string {
 
 // Shared web-parity rule (src/utils/validation.ts) — same /^[6-9]\d{9}$/ check.
 
-/** Default instant promise when live estimate isn't ready yet. */
-const DEFAULT_INSTANT_RANGE: [number, number] = [30, 40];
+// No hardcoded fallback promise: when the live estimate is unavailable we hide
+// the window rather than showing an invented one.
 
 const MONTHS_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
@@ -75,13 +82,13 @@ function parsePromiseRange(promiseText?: string): [number, number] | null {
   return lo > 0 && hi >= lo ? [lo, hi] : null;
 }
 
-function resolveEtaRange(estimate: DeliveryEstimate | null): [number, number] {
+function resolveEtaRange(estimate: DeliveryEstimate | null): [number, number] | null {
   const fromApi = parsePromiseRange(estimate?.promiseText);
   if (fromApi) return fromApi;
   if (estimate?.etaMinutes && estimate.etaMinutes > 0) {
     return [Math.max(8, estimate.etaMinutes - 5), estimate.etaMinutes + 5];
   }
-  return DEFAULT_INSTANT_RANGE;
+  return null;
 }
 
 /** "Today, 4:30 – 4:40 PM" for ranges. */
@@ -102,16 +109,41 @@ export default function CheckoutScreen() {
   const { selectedAddress } = useAddress();
   const wallet = useWallet();
 
+  const { refreshCart, setPricingContext } = cart;
+
+  // Re-price on entry. Cart totals otherwise persist from whenever the cart was
+  // last mutated, so checkout could quote a stale bill (e.g. FREE delivery)
+  // while the order is priced server-side at submit time and charges more.
+  useFocusEffect(
+    useCallback(() => {
+      refreshCart();
+    }, [refreshCart]),
+  );
+
+
   const [estimate, setEstimate] = useState<DeliveryEstimate | null>(null);
   const [orderForSomeone, setOrderForSomeone] = useState(false);
   const [receiverName, setReceiverName] = useState('');
   const [receiverPhone, setReceiverPhone] = useState('');
   const [payMethod, setPayMethod] = useState<PayMethod>('online');
   const [couponInput, setCouponInput] = useState('');
+  // Keep the quote live: changing address or payment method re-runs the
+  // server-side pricing engine, so the delivery fee shown is always the fee
+  // that will be charged for the current selection.
+  useEffect(() => {
+    setPricingContext({
+      zone: selectedAddress?.city ?? null,
+      paymentMethod: PAY_METHOD_TO_API[payMethod],
+    });
+  }, [selectedAddress?.city, payMethod, setPricingContext]);
 
   useEffect(() => {
     const storeId = mmkvStorage.getItem('assignedStoreId');
-    if (!storeId || !selectedAddress?.latitude || !selectedAddress?.longitude) return;
+    if (!storeId || !selectedAddress?.latitude || !selectedAddress?.longitude) {
+      setEstimate(null);
+      return;
+    }
+    let cancelled = false;
     deliveryApi
       .getEstimate({
         storeId,
@@ -120,9 +152,19 @@ export default function CheckoutScreen() {
         cartItemCount: totalItems || 1,
       })
       .then(res => {
-        if (res.etaMinutes) setEstimate(res);
+        if (cancelled) return;
+        // Keep any response that carries a usable promise; resolveEtaRange
+        // decides whether it is renderable.
+        setEstimate(res ?? null);
       })
-      .catch(() => {});
+      .catch(err => {
+        if (cancelled) return;
+        setEstimate(null);
+        console.warn('[checkout] delivery estimate failed', err);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [selectedAddress, totalItems]);
 
   if (items.length === 0) {
@@ -231,14 +273,20 @@ export default function CheckoutScreen() {
                 <Icon name="clock" size={12} color={colors.primaryDark} strokeWidth={2.2} />
                 <Text style={styles.etaTitle}>EXPECTED DELIVERY</Text>
               </View>
-              <View style={styles.etaTimeRow}>
-                <Icon name="zap" size={14} color={colors.primaryDark} strokeWidth={2.4} />
-                <Text style={styles.etaTime}>
-                  Delivered in {etaRange[0]} to {etaRange[1]} mins
-                </Text>
-              </View>
+              {etaRange ? (
+                <View style={styles.etaTimeRow}>
+                  <Icon name="zap" size={14} color={colors.primaryDark} strokeWidth={2.4} />
+                  <Text style={styles.etaTime}>
+                    Delivered in {etaRange[0]} to {etaRange[1]} mins
+                  </Text>
+                </View>
+              ) : (
+                <View style={styles.etaTimeRow}>
+                  <Text style={styles.etaTime}>Delivery time unavailable</Text>
+                </View>
+              )}
               <Text style={styles.etaSub}>
-                {formatExpectedDelivery(etaRange)}
+                {etaRange ? formatExpectedDelivery(etaRange) : 'We could not fetch a delivery window for this address.'}
                 {typeof estimate?.distanceKm === 'number' ? ` · ${estimate.distanceKm.toFixed(1)} km away` : ''}
                 {typeof estimate?.deliveryFee === 'number'
                   ? estimate.deliveryFee === 0

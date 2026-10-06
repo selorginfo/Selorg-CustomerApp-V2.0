@@ -24,6 +24,8 @@ import { ordersApi, type OrderTracking } from '../../services/orders.service';
 import { subscribeToOrder } from '../../services/realtime.service';
 import { isValidMapCoord } from '../../services/maps/directions';
 import { showToast } from '../../utils/toast';
+import { mmkvStorage } from '../../lib/storage';
+import DeliveredCelebration from '../../components/DeliveredCelebration';
 import { RootStackParamList } from '../../navigation/types';
 
 const STEP_ORDER = ['pending', 'confirmed', 'getting-packed', 'on-the-way', 'arrived', 'delivered'];
@@ -58,6 +60,7 @@ export default function Tracking() {
   const [store, setStore] = useState<MapCoord | null>(null);
   const [riderGps, setRiderGps] = useState<MapCoord | null>(null);
   const [riderHeading, setRiderHeading] = useState<number | null>(null);
+  const [celebrate, setCelebrate] = useState(false);
 
   const orderId = activeOrder?.id;
 
@@ -120,6 +123,19 @@ export default function Tracking() {
     });
   }, [orderId, openTracking, applyTracking]);
 
+  // Celebrate the moment an order reads as delivered — including the first time
+  // it is opened after being delivered in the background. The storage key makes
+  // it one-shot per order so revisiting tracking does not replay it. This sits
+  // above the early return below: hooks must run on every render.
+  const isDelivered = activeOrder?.status === 'delivered';
+  useEffect(() => {
+    if (!isDelivered || !orderId) return;
+    const seenKey = `delivered-celebrated:${orderId}`;
+    if (mmkvStorage.getItem(seenKey)) return;
+    mmkvStorage.setItem(seenKey, '1');
+    setCelebrate(true);
+  }, [isDelivered, orderId]);
+
   if (!activeOrder) {
     return (
       <ScreenContainer>
@@ -139,6 +155,7 @@ export default function Tracking() {
   const order = activeOrder;
   const cancelled = order.status === 'cancelled';
   const delivered = order.status === 'delivered';
+
   const curIdx = STEP_ORDER.indexOf(order.status);
   const fallbackMins = Math.max(0, 5 - Math.max(curIdx, 0)) * 5;
   const mins = etaMinutes ?? fallbackMins;
@@ -361,6 +378,16 @@ export default function Tracking() {
       </View>
 
       <CancelOrderSheet visible={cancelVisible} order={order} onClose={() => setCancelVisible(false)} />
+
+      <DeliveredCelebration
+        visible={celebrate}
+        orderNumber={order.orderNumber}
+        onRate={() => {
+          setCelebrate(false);
+          navigation.navigate('RateOrder', { orderId: order.id });
+        }}
+        onClose={() => setCelebrate(false)}
+      />
     </View>
   );
 }

@@ -258,7 +258,7 @@ export default function ProductDetail() {
     maxOrderLimit: typeof product.maxOrderLimit === 'number' ? product.maxOrderLimit : null,
   };
 
-  const goCart = () => navigation.navigate('Main', { screen: 'CartTab' });
+  const goCart = () => navigation.navigate('Cart');
 
   return (
     <View style={styles.root} testID="product-detail">

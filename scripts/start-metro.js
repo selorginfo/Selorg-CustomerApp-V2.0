@@ -9,7 +9,7 @@ const path = require('path');
 
 const root = path.join(__dirname, '..');
 const resetCache = process.argv.includes('--reset-cache');
-const PORT = 8081;
+const PORT = Number(process.env.RCT_METRO_PORT || process.env.METRO_PORT || 8082);
 
 function isPortFree(port) {
   return new Promise(resolve => {
@@ -64,6 +64,7 @@ async function main() {
   const fallbackCli = path.join(root, 'node_modules', 'react-native', 'cli.js');
   const cliPath = fs.existsSync(cliJs) ? cliJs : fallbackCli;
 
+  console.log(`[start-metro] Using port ${PORT}`);
   const args = [cliPath, 'start', '--port', String(PORT)];
   if (resetCache) {
     args.push('--reset-cache');
