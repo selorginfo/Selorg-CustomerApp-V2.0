@@ -171,6 +171,22 @@ dependencies {
     implementation("com.facebook.fresco:animated-gif:3.6.0")
     implementation("com.facebook.fresco:animated-webp:3.6.0")
     implementation("com.facebook.fresco:webpsupport:3.6.0")
+
+    // AsyncStorage pulls sqlite-bundled 2.6.0 and datastore 1.1.7, whose
+    // libsqliteJni.so / libdatastore_shared_counter.so have RELRO segments that
+    // fail Android 15+ 16 KB page-size checks.
+    constraints {
+        ["sqlite", "sqlite-framework", "sqlite-bundled"].each { artifact ->
+            implementation("androidx.sqlite:${artifact}:2.6.2") {
+                because "16 KB page-size aligned libsqliteJni.so"
+            }
+        }
+        ["datastore", "datastore-core", "datastore-core-okio", "datastore-preferences", "datastore-preferences-core"].each { artifact ->
+            implementation("androidx.datastore:${artifact}:1.2.1") {
+                because "16 KB page-size aligned libdatastore_shared_counter.so"
+            }
+        }
+    }
 }
 
 apply plugin: "com.google.gms.google-services"

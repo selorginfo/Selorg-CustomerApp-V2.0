@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Image, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { Image, Pressable, RefreshControl, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import LinearGradient from 'react-native-linear-gradient';
 import { useNavigation } from '@react-navigation/native';
@@ -18,12 +18,15 @@ import {
   type ResolvedHomeSection,
 } from '../../utils/homeResolve';
 import { resolveListingStock } from '../../utils/catalogMappers';
+import HeroCarousel from '../../components/HeroCarousel';
+import { checkStockAlerts } from '../../utils/stockAlerts';
 import { useCart } from '../../context/CartContext';
 import { useWishlist } from '../../context/WishlistContext';
 import { useOrders } from '../../context/OrdersContext';
 import { useNotifications } from '../../context/NotificationsContext';
 import { useAuth } from '../../context/AuthContext';
 import { useAddress } from '../../context/AddressContext';
+import { useDeliveryEta } from '../../utils/useDeliveryEta';
 import type { RootStackParamList } from '../../navigation/types';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -95,18 +98,20 @@ export default function HomeScreen() {
   const navigation = useNavigation<Nav>();
   const cart = useCart();
   const wishlist = useWishlist();
-  const { activeOrder } = useOrders();
+  const { activeOrder, refreshActiveOrder } = useOrders();
   const { unreadCount } = useNotifications();
   const { isAuthenticated } = useAuth();
   const { selectedAddress } = useAddress();
+  const etaText = useDeliveryEta();
 
   const [categories, setCategories] = useState<ApiCategory[]>([]);
   const [sections, setSections] = useState<ResolvedHomeSection[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async (opts?: { silent?: boolean }) => {
+    if (!opts?.silent) setLoading(true);
     setError(false);
     try {
       const home = await catalogApi.getHome();
@@ -131,7 +136,19 @@ export default function HomeScreen() {
 
   useEffect(() => {
     load();
+    // Back-in-stock alerts set from Product Detail (throttled).
+    checkStockAlerts().catch(() => {});
   }, [load]);
+
+  // Pull-to-refresh: keep the current content on screen while re-fetching.
+  const onPullRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await Promise.all([load({ silent: true }), isAuthenticated ? refreshActiveOrder() : Promise.resolve()]);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [load, isAuthenticated, refreshActiveOrder]);
 
   const heroSection = useMemo(() => {
     const hero = sections.find(isHeroBannerSection);
@@ -206,8 +223,26 @@ export default function HomeScreen() {
       const catMatch = item.link.match(/\/categor(?:y|ies)\/([^/?#]+)/i);
       if (catMatch?.[1]) {
         navigation.navigate('CategoryProducts', { categoryId: decodeURIComponent(catMatch[1]) });
+        return;
+      }
+      const prodMatch = item.link.match(/\/products?\/([^/?#]+)/i);
+      if (prodMatch?.[1]) {
+        navigation.navigate('ProductDetail', { productId: decodeURIComponent(prodMatch[1]) });
+        return;
+      }
+      const colMatch = item.link.match(/\/collections?\/([^/?#]+)/i);
+      if (colMatch?.[1]) {
+        navigation.navigate('Collection', {
+          collectionKey: decodeURIComponent(colMatch[1]),
+          title: item.title || item.name || 'Collection',
+        });
+        return;
       }
     }
+    // No usable target configured — search for the card's theme rather than
+    // leaving the tap dead.
+    const label = (item.title || item.name || '').trim();
+    navigation.navigate('Search', label ? { q: label } : undefined);
   };
 
   const renderProductGrid = (products: ApiProduct[]) => (
@@ -244,15 +279,22 @@ export default function HomeScreen() {
     </View>
   );
 
+  // Every hero banner with artwork, as a swipeable auto-advancing carousel.
   const renderHero = (banners: HomeBanner[]) => {
-    const b = banners[0];
-    if (!b) return null;
-    const uri = bannerImageUri(b);
-    if (!uri) return null;
+    const withArt = banners
+      .map((b, i) => ({ b, uri: bannerImageUri(b), key: b._id || b.bannerId || `hero-${i}` }))
+      .filter((x): x is { b: HomeBanner; uri: string; key: string } => !!x.uri);
+    if (!withArt.length) return null;
     return (
-      <Pressable style={styles.heroCard} onPress={() => navigateBanner(b)} testID="home-hero-banner">
-        <Image source={{ uri }} style={styles.heroImage} resizeMode="cover" />
-      </Pressable>
+      <View style={styles.heroCard}>
+        <HeroCarousel
+          testID="home-hero-banner"
+          slides={withArt.map(x => ({ key: x.key, uri: x.uri }))}
+          width={screenW - 32}
+          height={168}
+          onPress={i => navigateBanner(withArt[i].b)}
+        />
+      </View>
     );
   };
 
@@ -357,13 +399,17 @@ export default function HomeScreen() {
             <View style={styles.locTextWrap}>
               <View style={styles.locTitleRow}>
                 <Text style={styles.locTitle} numberOfLines={1}>
-                  {selectedAddress ? `Delivering to ${selectedAddress.label}` : 'Set location'}
+                  {selectedAddress
+                    ? etaText
+                      ? `Delivery in ${etaText}`
+                      : `Delivering to ${selectedAddress.label}`
+                    : 'Set location'}
                 </Text>
                 <Icon name="chevronDown" size={14} color={colors.textMuted} />
               </View>
               <Text style={styles.locSub} numberOfLines={1}>
                 {selectedAddress
-                  ? `${selectedAddress.line1}, ${selectedAddress.city}`
+                  ? `${etaText ? `${selectedAddress.label} · ` : ''}${selectedAddress.line1}, ${selectedAddress.city}`
                   : 'Tap to add an address'}
               </Text>
             </View>
@@ -405,9 +451,17 @@ export default function HomeScreen() {
         nestedScrollEnabled
         directionalLockEnabled
         keyboardShouldPersistTaps="handled"
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onPullRefresh}
+            colors={[colors.primary]}
+            tintColor={colors.primary}
+          />
+        }
       >
         {activeOrder ? (
-          <Pressable style={styles.orderBanner} onPress={() => navigation.navigate('Tracking')}>
+          <Pressable style={styles.orderBanner} onPress={() => navigation.navigate('Tracking', { orderId: activeOrder.id })}>
             <Icon name="truck" size={24} color={colors.white} />
             <View style={styles.orderBannerText}>
               <Text style={styles.orderBannerTitle}>
@@ -498,8 +552,10 @@ export default function HomeScreen() {
                       <Text style={styles.sectionTitle}>{section.label}</Text>
                       <Pressable
                         onPress={() =>
+                          // Pass the section key: Collection resolves both section
+                          // and collection keys (a slug alone 404s for non-collection sections).
                           navigation.navigate('Collection', {
-                            collectionKey: section.slug,
+                            collectionKey: section.key,
                             title: section.label,
                           })
                         }

@@ -5,6 +5,8 @@ import BottomSheet from './BottomSheet';
 import Icon from './Icon';
 import PrimaryButton from './PrimaryButton';
 import type { Order } from '../context/OrdersContext';
+import { showToast } from '../utils/toast';
+import { getErrorMessage } from '../utils/apiError';
 
 const STAR_EMPTY = '#CBD2C7';
 const LABELS = ['Tap a star to rate', 'Poor', 'Fair', 'Good', 'Very good', 'Excellent'];
@@ -42,6 +44,9 @@ export default function RateOrderPrompt({ visible, order, onClose, onSubmit }: P
       setStars(0);
       setComment('');
       onClose();
+    } catch (err) {
+      // Keep the sheet open with the chosen stars so the user can retry.
+      showToast(getErrorMessage(err, 'Could not submit rating'), 'err');
     } finally {
       setSubmitting(false);
     }

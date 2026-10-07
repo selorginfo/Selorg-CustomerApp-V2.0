@@ -9,7 +9,7 @@ import {
   Dimensions,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { navigate } from '../utils/navigationRef';
+import { openNotificationTarget } from '../utils/notificationRoute';
 
 const SCREEN_W = Dimensions.get('window').width;
 
@@ -122,13 +122,11 @@ export default function InAppNotificationBanner({ notification, onDismiss }: Pro
   }, [notification]);
 
   const handlePress = () => {
-    const productId = notification?.data?.productId;
+    const data = notification?.data as Record<string, unknown> | undefined;
     clearAllTimers();
     slideOut(() => {
       onDismiss();
-      if (productId) {
-        navigate('ProductDetail', { productId });
-      }
+      openNotificationTarget(data);
     });
   };
 

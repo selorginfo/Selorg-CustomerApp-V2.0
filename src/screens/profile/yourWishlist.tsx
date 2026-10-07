@@ -7,6 +7,7 @@ import { spacing } from '../../theme';
 import { images } from '../../theme/images';
 import { catalogApi } from '../../services/catalog.service';
 import type { ApiProduct } from '../../services/catalog.service';
+import { resolveListingStock } from '../../utils/catalogMappers';
 import { useCart } from '../../context/CartContext';
 import { useWishlist } from '../../context/WishlistContext';
 import type { RootStackParamList } from '../../navigation/types';
@@ -19,7 +20,7 @@ function toProductCard(p: ApiProduct) {
   const photo = p.imageUrl || p.thumbnailUrl || p.cardImageUrl || (Array.isArray(p.images) ? p.images[0] : '');
   const rating = typeof p.rating === 'number' ? p.rating : ((p.rating as any)?.average ?? 4.2);
   const unit = (Array.isArray(p.variants) && p.variants[0]?.size) || p.size || p.quantity || p.uom || '1 unit';
-  const stock = typeof p.stockQuantity === 'number' ? p.stockQuantity : (p.stock !== false && p.stock !== 0 ? 99 : 0);
+  const stock = resolveListingStock(p);
   return {
     id: p._id,
     categoryId: p.categoryId || '',
@@ -84,8 +85,8 @@ export default function YourWishlistScreen() {
                   wished={true}
                   onPress={() => navigation.navigate('ProductDetail', { productId: p.id })}
                   onToggleWish={() => toggleWish(p.id)}
-                  onAdd={() => cart.addToCart({ id: p.id, name: p.name, unit: p.unit, price: p.price, mrp: p.mrp, stockQuantity: p.stockQuantity, image: p.image })}
-                  onIncrement={() => cart.incrementItem(p.id)}
+                  onAdd={() => cart.addToCart({ id: p.id, name: p.name, unit: p.unit, price: p.price, mrp: p.mrp, stockQuantity: p.stockQuantity, maxOrderLimit: p.maxOrderLimit, image: p.image })}
+                  onIncrement={() => cart.incrementItem(p.id, undefined, p.maxOrderLimit)}
                   onDecrement={() => cart.decrementItem(p.id)}
                 />
               </View>

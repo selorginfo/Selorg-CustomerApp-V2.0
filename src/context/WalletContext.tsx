@@ -17,6 +17,15 @@ import React, {
 } from 'react';
 
 import { walletApi } from '../services/wallet.service';
+import { getErrorMessage } from '../utils/apiError';
+import { usePager } from '../utils/usePager';
+
+const TXNS_PAGE = 50;
+
+export type TopUpMethod = 'upi' | 'cards' | 'wallets' | 'netbanking';
+/** Client-side top-up bounds; the server may enforce a tighter range (its message is shown). */
+export const TOPUP_MIN = 10;
+export const TOPUP_MAX = 10000;
 
 import type { WalletTransaction } from '../services/wallet.service';
 
@@ -25,6 +34,7 @@ import { paymentsApi } from '../services/payments.service';
 import { Storage } from '../api/storage';
 
 import { showToast } from '../utils/toast';
+import { useAuth } from './AuthContext';
 
 import { parseReturnUrl, hasWorldlineGatewayPayload, isWorldlinePaidStatus, isWorldlinePendingStatus, isWorldlineFailedStatus } from '../utils/worldline';
 
@@ -63,10 +73,15 @@ interface WalletContextType {
   wallet: Wallet;
 
   loading: boolean;
+  hasMore: boolean;
+  loadingMore: boolean;
+  loadMore: () => Promise<void>;
 
   refreshWallet: () => Promise<void>;
 
-  topUp: (amount: number, _method?: string) => Promise<void>;
+  reloadWallet: () => Promise<void>;
+
+  topUp: (amount: number, method?: TopUpMethod) => Promise<boolean>;
 
   completeTopUp: (returnUrlOrResponse: string | Record<string, unknown>) => Promise<boolean>;
 
@@ -109,6 +124,8 @@ function toTxn(raw: WalletTransaction): WalletTxn {
 
 
 export const WalletProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
+  const { user } = useAuth();
+  const userId = user?.id || '';
 
   const [balance, setBalance] = useState(0);
 
@@ -126,112 +143,87 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({ children }) 
 
 
 
-  const loadWallet = useCallback(async () => {
+  const fetchTxnsPage = useCallback(
+    async (page: number) => ((await walletApi.getTransactions({ page, limit: TXNS_PAGE })) ?? []).map(toTxn),
+    [],
+  );
+  const pager = usePager(fetchTxnsPage, TXNS_PAGE, setTxns);
+  const { firstPageLoaded } = pager;
 
+  /** Resolves false when the balance could not be fetched. */
+  const loadWallet = useCallback(async (): Promise<boolean> => {
     if (!Storage.getItem('accessToken')) {
-
       setBalance(0);
-
       setTxns([]);
-
-      return;
-
+      return false;
     }
-
     setLoading(true);
-
     try {
-
       const [bal, transactions] = await Promise.all([
-
         walletApi.getBalance(),
-
-        walletApi.getTransactions({ limit: 50 }),
-
+        walletApi.getTransactions({ page: 1, limit: TXNS_PAGE }),
       ]);
-
       setBalance(bal.balance ?? 0);
-
       setTxns((transactions ?? []).map(toTxn));
-
+      firstPageLoaded((transactions ?? []).length);
+      return true;
     } catch {
-
       // keep previous state
-
+      return false;
     } finally {
-
       setLoading(false);
-
     }
+  }, [firstPageLoaded]);
 
-  }, []);
-
-
-
+  // Reload per account: launch, login, logout and account switch.
   useEffect(() => {
-
+    setBalance(0);
+    setTxns([]);
+    if (!userId) return;
     loadWallet();
+  }, [userId, loadWallet]);
 
-  }, [loadWallet]);
-
-
-
-  const refreshWallet = useCallback(async () => {
-
+  /** Silent re-fetch (screen focus, after paying). */
+  const reloadWallet = useCallback(async () => {
     await loadWallet();
-
-    showToast('Balance updated', 'info');
-
   }, [loadWallet]);
 
-
+  /** User-initiated refresh — reports the real outcome. */
+  const refreshWallet = useCallback(async () => {
+    const ok = await loadWallet();
+    if (ok) showToast('Balance updated', 'info');
+    else showToast('Could not refresh balance. Check your connection.', 'err');
+  }, [loadWallet]);
 
   const clearTopUpSession = useCallback(() => {
-
     setTopUpSessionPayload(null);
-
     setPendingTopUpOrderId(null);
-
     setPendingTopUpTxnId(null);
-
   }, []);
 
-
-
   const topUp = useCallback(
-
-    async (amount: number) => {
-
-      if (amount <= 0) return;
-
-      try {
-
-        const session = await walletApi.initiateTopUp(amount);
-
-        if (!session.sessionPayload || !session.orderId) {
-
-          showToast('Could not start top-up', 'err');
-
-          return;
-
-        }
-
-        setPendingTopUpOrderId(String(session.orderId));
-
-        setPendingTopUpTxnId(session.txnId ? String(session.txnId) : null);
-
-        setTopUpSessionPayload(session.sessionPayload);
-
-      } catch {
-
-        showToast('Could not start top-up', 'err');
-
+    async (amount: number, method?: TopUpMethod): Promise<boolean> => {
+      if (!Number.isFinite(amount) || amount < TOPUP_MIN || amount > TOPUP_MAX) {
+        showToast(`Enter an amount between ₹${TOPUP_MIN} and ₹${TOPUP_MAX.toLocaleString('en-IN')}`, 'err');
+        return false;
       }
-
+      try {
+        // The chosen instrument scopes the hosted checkout (UPI / cards / …).
+        const session = await walletApi.initiateTopUp(amount, undefined, method);
+        if (!session.sessionPayload || !session.orderId) {
+          showToast('Could not start top-up', 'err');
+          return false;
+        }
+        setPendingTopUpOrderId(String(session.orderId));
+        setPendingTopUpTxnId(session.txnId ? String(session.txnId) : null);
+        setTopUpSessionPayload(session.sessionPayload);
+        return true;
+      } catch (err) {
+        showToast(getErrorMessage(err, 'Could not start top-up'), 'err');
+        return false;
+      }
     },
-
     [],
-
   );
 
 
@@ -390,8 +382,12 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       wallet,
 
       loading,
+      hasMore: pager.hasMore,
+      loadingMore: pager.loadingMore,
+      loadMore: pager.loadMore,
 
       refreshWallet,
+      reloadWallet,
 
       topUp,
 
@@ -412,8 +408,12 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       wallet,
 
       loading,
+      pager.hasMore,
+      pager.loadingMore,
+      pager.loadMore,
 
       refreshWallet,
+      reloadWallet,
 
       topUp,
 

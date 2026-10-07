@@ -23,7 +23,8 @@ export type RootStackParamList = {
 
   Main: NavigatorScreenParams<MainTabParamList> | undefined;
 
-  Search: undefined;
+  /** `q` pre-fills the query (e.g. text typed in the Categories search). */
+  Search: { q?: string } | undefined;
   CategoryProducts: { categoryId: string; sub?: string };
   Collection: { collectionKey: string; title?: string };
 
@@ -40,7 +41,8 @@ export type RootStackParamList = {
     | undefined;
   OrderPlaced: { orderId: string };
 
-  Tracking: undefined;
+  /** orderId of the order to track; falls back to the current active order. */
+  Tracking: { orderId?: string } | undefined;
   Orders: undefined;
   OrderDetail: { orderId: string };
   Invoice: { orderId: string };

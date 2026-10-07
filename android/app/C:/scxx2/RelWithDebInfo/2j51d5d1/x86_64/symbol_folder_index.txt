@@ -1,1 +1,0 @@
-/Users/sudesh/Documents/untitled folder/selorg-v2/Selorg-CustomerApp-V2.0/android/app/build/intermediates/cxx/RelWithDebInfo/2j51d5d1/obj/x86_64

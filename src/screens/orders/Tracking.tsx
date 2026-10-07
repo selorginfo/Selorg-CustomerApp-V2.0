@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
+import type { RouteProp } from '@react-navigation/native';
 import {
   Dimensions,
   Image,
@@ -11,19 +12,20 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { colors, fontFamily, radii } from '../../theme';
 import { images } from '../../theme/images';
 import { ScreenContainer, Header, Icon, PrimaryButton, StateView } from '../../components';
 import CancelOrderSheet from '../../components/CancelOrderSheet';
 import { LiveTrackingMap, type MapCoord } from '../../components/orders/LiveTrackingMap';
-import { useOrders } from '../../context/OrdersContext';
+import { useOrders, type Order } from '../../context/OrdersContext';
 import { useSupport } from '../../context/SupportContext';
 import { ordersApi, type OrderTracking } from '../../services/orders.service';
 import { subscribeToOrder } from '../../services/realtime.service';
 import { isValidMapCoord } from '../../services/maps/directions';
 import { showToast } from '../../utils/toast';
+import { getErrorMessage } from '../../utils/apiError';
 import { mmkvStorage } from '../../lib/storage';
 import DeliveredCelebration from '../../components/DeliveredCelebration';
 import { RootStackParamList } from '../../navigation/types';
@@ -51,18 +53,44 @@ function toCoord(point?: { latitude?: number; longitude?: number } | null): MapC
 export default function Tracking() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const insets = useSafeAreaInsets();
-  const { activeOrder, canCancel, openTracking, rateOrder } = useOrders();
+  const route = useRoute<RouteProp<RootStackParamList, 'Tracking'>>();
+  const { activeOrder, orders, canCancel, openTracking, rateOrder } = useOrders();
   const { chatWithRider, newTicket } = useSupport();
   const [cancelVisible, setCancelVisible] = useState(false);
   const [etaMinutes, setEtaMinutes] = useState<number | null>(null);
-  const [rider, setRider] = useState<{ name?: string; phone?: string } | null>(null);
+  const [rider, setRider] = useState<{
+    name?: string;
+    phone?: string;
+    photoUri?: string;
+    vehicle?: string;
+    rating?: number;
+  } | null>(null);
   const [destination, setDestination] = useState<MapCoord | null>(null);
   const [store, setStore] = useState<MapCoord | null>(null);
   const [riderGps, setRiderGps] = useState<MapCoord | null>(null);
   const [riderHeading, setRiderHeading] = useState<number | null>(null);
   const [celebrate, setCelebrate] = useState(false);
+  const [shipperStars, setShipperStars] = useState(0);
+  const [ratingBusy, setRatingBusy] = useState(false);
+  const [now, setNow] = useState(() => Date.now());
+  const [etaDeadline, setEtaDeadline] = useState<number | null>(null);
 
-  const orderId = activeOrder?.id;
+  // Track the order that was tapped, not whichever order happens to be active.
+  const orderId = route.params?.orderId || activeOrder?.id;
+  const [tracked, setTracked] = useState<Order | null>(
+    () =>
+      (orderId && (activeOrder?.id === orderId ? activeOrder : orders.find(o => o.id === orderId))) ||
+      null,
+  );
+
+  const [loadFailed, setLoadFailed] = useState(false);
+
+  const loadTracked = useCallback(async () => {
+    if (!orderId) return;
+    const next = await openTracking(orderId);
+    if (next) setTracked(next);
+    else setLoadFailed(true);
+  }, [orderId, openTracking]);
 
   const applyTracking = useCallback((t: OrderTracking) => {
     const mins =
@@ -71,11 +99,20 @@ export default function Tracking() {
         : typeof t.etaMinutes === 'number'
           ? t.etaMinutes
           : null;
-    if (mins != null) setEtaMinutes(mins);
+    if (mins != null) {
+      setEtaMinutes(mins);
+      setEtaDeadline(Date.now() + mins * 60_000);
+    }
 
     const partner = t.deliveryPartner;
     if (partner?.name) {
-      setRider({ name: partner.name, phone: partner.phone || undefined });
+      setRider({
+        name: partner.name,
+        phone: partner.phone || undefined,
+        photoUri: partner.photoUri || undefined,
+        vehicle: partner.vehicleNumber || partner.vehicleType || undefined,
+        rating: typeof partner.rating === 'number' ? partner.rating : undefined,
+      });
     } else if (t.rider?.name) {
       setRider({ name: t.rider.name, phone: t.rider.phone });
     }
@@ -94,18 +131,18 @@ export default function Tracking() {
 
   useEffect(() => {
     if (!orderId) return;
-    openTracking(orderId);
+    loadTracked();
     ordersApi
       .getTracking(orderId)
       .then(applyTracking)
       .catch(() => {});
-  }, [orderId, openTracking, applyTracking]);
+  }, [orderId, loadTracked, applyTracking]);
 
   // Live order status + rider GPS over /customer-socket.io
   useEffect(() => {
     if (!orderId) return;
     const refresh = () => {
-      openTracking(orderId).catch(() => {});
+      loadTracked().catch(() => {});
       ordersApi.getTracking(orderId).then(applyTracking).catch(() => {});
     };
     return subscribeToOrder(orderId, {
@@ -121,13 +158,21 @@ export default function Tracking() {
         }
       },
     });
-  }, [orderId, openTracking, applyTracking]);
+  }, [orderId, loadTracked, applyTracking]);
 
   // Celebrate the moment an order reads as delivered — including the first time
   // it is opened after being delivered in the background. The storage key makes
   // it one-shot per order so revisiting tracking does not replay it. This sits
   // above the early return below: hooks must run on every render.
-  const isDelivered = activeOrder?.status === 'delivered';
+  const isDelivered = tracked?.status === 'delivered';
+  const isLive = !!tracked && tracked.status !== 'delivered' && tracked.status !== 'cancelled';
+
+  // ETA counts down once a second instead of sitting on a static "mm:00".
+  useEffect(() => {
+    if (!isLive) return undefined;
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, [isLive]);
   useEffect(() => {
     if (!isDelivered || !orderId) return;
     const seenKey = `delivered-celebrated:${orderId}`;
@@ -136,7 +181,16 @@ export default function Tracking() {
     setCelebrate(true);
   }, [isDelivered, orderId]);
 
-  if (!activeOrder) {
+  if (!tracked && orderId && !loadFailed) {
+    return (
+      <ScreenContainer>
+        <Header title="Tracking on Map" onBack={() => navigation.goBack()} />
+        <StateView kind="loading" />
+      </ScreenContainer>
+    );
+  }
+
+  if (!tracked) {
     return (
       <ScreenContainer>
         <Header title="Tracking on Map" onBack={() => navigation.goBack()} />
@@ -152,14 +206,17 @@ export default function Tracking() {
     );
   }
 
-  const order = activeOrder;
+  const order = tracked;
   const cancelled = order.status === 'cancelled';
   const delivered = order.status === 'delivered';
 
   const curIdx = STEP_ORDER.indexOf(order.status);
   const fallbackMins = Math.max(0, 5 - Math.max(curIdx, 0)) * 5;
   const mins = etaMinutes ?? fallbackMins;
-  const etaLabel = `${mins}:00`;
+  const etaSecsLeft = etaDeadline
+    ? Math.max(0, Math.round((etaDeadline - now) / 1000))
+    : mins * 60;
+  const etaLabel = `${Math.floor(etaSecsLeft / 60)}:${String(etaSecsLeft % 60).padStart(2, '0')}`;
 
   const statusLabel = cancelled ? 'Cancelled' : delivered ? 'Delivered' : STEP_LABELS[order.status] || order.status;
   const firstItem = order.items[0];
@@ -172,7 +229,11 @@ export default function Tracking() {
       );
       return;
     }
-    showToast(rider?.name ? `Calling ${rider.name}…` : 'Rider contact unavailable', 'info');
+    // No number means no call can be placed — don't pretend one is.
+    showToast(
+      rider?.name ? `${rider.name}'s number isn't available yet. Try chat instead.` : 'Rider contact unavailable',
+      'info',
+    );
   };
 
   const handleChat = async () => {
@@ -193,12 +254,17 @@ export default function Tracking() {
     }
   };
 
-  const handleRateShipper = async (stars: number) => {
+  // Stars only select; the rating is sent when the user confirms.
+  const handleRateShipper = async () => {
+    if (!shipperStars || ratingBusy) return;
+    setRatingBusy(true);
     try {
-      await rateOrder(order.id, stars);
+      await rateOrder(order.id, shipperStars);
       navigation.navigate('RatingSuccess');
-    } catch {
-      showToast('Could not submit rating', 'err');
+    } catch (err) {
+      showToast(getErrorMessage(err, 'Could not submit rating'), 'err');
+    } finally {
+      setRatingBusy(false);
     }
   };
 
@@ -271,10 +337,21 @@ export default function Tracking() {
           {!cancelled && !delivered ? (
             <View style={styles.riderRow}>
               <View style={styles.riderAvatar}>
-                <Image source={images.rider} style={styles.riderAvatarImg} resizeMode="cover" />
+                <Image
+                  source={rider?.photoUri ? { uri: rider.photoUri } : images.rider}
+                  style={styles.riderAvatarImg}
+                  resizeMode="cover"
+                />
               </View>
               <View style={styles.riderBody}>
-                <Text style={styles.riderName}>{rider?.name || 'Your delivery partner'}</Text>
+                <Text style={styles.riderName} numberOfLines={1}>{rider?.name || 'Your delivery partner'}</Text>
+                {rider?.vehicle || rider?.rating != null ? (
+                  <Text style={styles.riderSub} numberOfLines={1}>
+                    {[rider.vehicle, rider.rating != null ? `★ ${rider.rating.toFixed(1)}` : null]
+                      .filter(Boolean)
+                      .join('  ·  ')}
+                  </Text>
+                ) : null}
                 <Text style={styles.riderSub}>
                   {riderGps
                     ? 'Live on the map'
@@ -343,19 +420,40 @@ export default function Tracking() {
           )}
 
           {/* Rate the shipper */}
-          {delivered ? (
+          {delivered && !order.reviewAsked ? (
             <View style={styles.shipperBlock}>
               <Text style={styles.shipperTitle}>HOW IS YOUR SHIPPER?</Text>
               <Text style={styles.shipperSub}>
                 Your feedback will help us improve the delivery experience.
               </Text>
               <View style={styles.shipperStars}>
-                {[1, 2, 3, 4, 5].map(n => (
-                  <Pressable key={n} onPress={() => handleRateShipper(n)} hitSlop={6}>
-                    <Icon name="star" size={32} color="#DCE0D8" fill="#DCE0D8" strokeWidth={0} />
-                  </Pressable>
-                ))}
+                {[1, 2, 3, 4, 5].map(n => {
+                  const on = n <= shipperStars;
+                  const tone = on ? '#F5B301' : '#DCE0D8';
+                  return (
+                    <Pressable
+                      key={n}
+                      onPress={() => setShipperStars(n)}
+                      hitSlop={6}
+                      accessibilityRole="button"
+                      accessibilityLabel={`${n} star${n === 1 ? '' : 's'}`}
+                      accessibilityState={{ selected: on }}
+                    >
+                      <Icon name="star" size={32} color={tone} fill={tone} strokeWidth={0} />
+                    </Pressable>
+                  );
+                })}
               </View>
+              {shipperStars > 0 ? (
+                <View style={styles.shipperSubmit}>
+                  <PrimaryButton
+                    label={ratingBusy ? 'Submitting…' : 'Submit rating'}
+                    onPress={handleRateShipper}
+                    disabled={ratingBusy}
+                    loading={ratingBusy}
+                  />
+                </View>
+              ) : null}
             </View>
           ) : null}
 
@@ -377,7 +475,16 @@ export default function Tracking() {
         </ScrollView>
       </View>
 
-      <CancelOrderSheet visible={cancelVisible} order={order} onClose={() => setCancelVisible(false)} />
+      <CancelOrderSheet
+        visible={cancelVisible}
+        order={order}
+        onClose={() => setCancelVisible(false)}
+        // Stay on this order and show it as cancelled rather than "No active order".
+        onCancelled={() => {
+          setTracked(prev => (prev ? { ...prev, status: 'cancelled' } : prev));
+          loadTracked().catch(() => {});
+        }}
+      />
 
       <DeliveredCelebration
         visible={celebrate}
@@ -550,6 +657,7 @@ const styles = StyleSheet.create({
     maxWidth: 250,
   },
   shipperStars: { flexDirection: 'row', gap: 10, marginTop: 14 },
+  shipperSubmit: { marginTop: 14 },
 
   actions: { marginTop: 16, gap: 10 },
 });

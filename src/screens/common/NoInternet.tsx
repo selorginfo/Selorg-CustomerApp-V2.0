@@ -1,15 +1,32 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { AnimatedIcon, PrimaryButton, ScreenContainer } from '../../components';
 import { colors, fontFamily, spacing } from '../../theme';
 import type { RootStackParamList } from '../../navigation/types';
+import { probeConnectivity } from '../../utils/connectivity';
+import { showToast } from '../../utils/toast';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
 export default function NoInternetScreen() {
   const navigation = useNavigation<Nav>();
+  const [checking, setChecking] = useState(false);
+
+  // Re-check the connection; only leave once it's really back.
+  const onTryAgain = async () => {
+    if (checking) return;
+    setChecking(true);
+    const ok = await probeConnectivity();
+    setChecking(false);
+    if (!ok) {
+      showToast('Still offline. Check Wi-Fi or mobile data.', 'err');
+      return;
+    }
+    if (navigation.canGoBack()) navigation.goBack();
+    else navigation.reset({ index: 0, routes: [{ name: 'Splash' }] });
+  };
 
   return (
     <ScreenContainer edges={['top', 'bottom']}>
@@ -23,7 +40,13 @@ export default function NoInternetScreen() {
             We couldn&rsquo;t reach Selorg. Check your connection and try again — your cart is saved.
           </Text>
         </View>
-        <PrimaryButton label="Try again" onPress={() => navigation.goBack()} />
+        <PrimaryButton
+          label={checking ? 'Checking…' : 'Try again'}
+          onPress={onTryAgain}
+          loading={checking}
+          disabled={checking}
+          testID="no-internet-retry"
+        />
       </View>
     </ScreenContainer>
   );

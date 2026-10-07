@@ -1,6 +1,6 @@
-import React, { useRef, useState } from 'react';
+import React, { useCallback, useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-import { useNavigation, useRoute } from '@react-navigation/native';
+import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RouteProp } from '@react-navigation/native';
 import { Header, Icon, ScreenContainer } from '../../components';
@@ -13,11 +13,22 @@ type Nav = NativeStackNavigationProp<RootStackParamList>;
 export default function TicketDetailScreen() {
   const navigation = useNavigation<Nav>();
   const route = useRoute<RouteProp<RootStackParamList, 'TicketDetail'>>();
-  const { tickets, sendMessage, reopenTicket } = useSupport();
+  const { tickets, sendMessage, reopenTicket, refreshTicket } = useSupport();
   const [draft, setDraft] = useState('');
   const scrollRef = useRef<ScrollView>(null);
+  const ticketId = route.params.ticketId;
 
-  const ticket = tickets.find(t => t.id === route.params.ticketId);
+  const ticket = tickets.find(t => t.id === ticketId);
+
+  // Agent replies arrive without the customer having to send something first:
+  // fetch on open and poll while the conversation is on screen.
+  useFocusEffect(
+    useCallback(() => {
+      refreshTicket(ticketId);
+      const t = setInterval(() => refreshTicket(ticketId), 10000);
+      return () => clearInterval(t);
+    }, [ticketId, refreshTicket]),
+  );
 
   if (!ticket) {
     return (
@@ -32,12 +43,14 @@ export default function TicketDetailScreen() {
 
   const resolved = ticket.status === 'resolved';
 
-  const onSend = () => {
+  const onSend = async () => {
     const text = draft.trim();
     if (!text) return;
-    sendMessage(ticket.id, text);
     setDraft('');
     setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 60);
+    const ok = await sendMessage(ticket.id, text);
+    // Put an undelivered message back in the composer for a retry.
+    if (!ok) setDraft(prev => prev || text);
   };
 
   return (

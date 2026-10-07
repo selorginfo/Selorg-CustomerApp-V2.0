@@ -16,8 +16,23 @@ import { mmkvStorage } from '../lib/storage';
 import { mapApiCart } from '../utils/mappers';
 import { showToast } from '../utils/toast';
 import { getErrorMessage } from '../utils/apiError';
+import { useAuth } from './AuthContext';
 
 const GUEST_CART_KEY = 'guestCart';
+
+const COUPON_ERRORS: Record<string, string> = {
+  INVALID_CODE: 'This code is not valid',
+  COUPON_INACTIVE: 'This code is paused',
+  COUPON_NOT_VALID_NOW: 'This code is not valid right now',
+  MIN_ORDER_NOT_MET: 'Your cart is below the minimum for this code',
+  COUPON_EXHAUSTED: 'This code has already been used',
+  NOT_ELIGIBLE: 'This code is not available for your account',
+  PAYMENT_METHOD_NOT_ELIGIBLE: 'This code does not apply to this payment method',
+};
+
+function couponErrorText(code?: string): string {
+  return (code && COUPON_ERRORS[code]) || 'Invalid or expired coupon';
+}
 const MERGE_KEY = 'cartMergeKey';
 
 export interface CartProduct {
@@ -147,6 +162,9 @@ export const CartProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [loading, setLoading] = useState(false);
   const syncing = useRef(false);
 
+  const { user } = useAuth();
+  const accountId = user?.id || '';
+  const accountRef = useRef(accountId);
   const isAuthenticated = () => Boolean(Storage.getItem('accessToken'));
 
   const cartSetters = useMemo(
@@ -167,6 +185,7 @@ export const CartProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   );
 
   const refreshCart = useCallback(async () => {
+    const forAccount = accountId;
     if (!isAuthenticated()) {
       setItems(readGuestCart());
       const localTotal = readGuestCart().reduce((s, i) => s + i.price * i.quantity, 0);
@@ -184,17 +203,42 @@ export const CartProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       if (pricingContext.zone) query.zone = pricingContext.zone;
       if (pricingContext.paymentMethod) query.payment_method = pricingContext.paymentMethod;
       const cart = await cartApi.getCart(Object.keys(query).length ? query : undefined);
+      if (accountRef.current !== forAccount) return;
       applyCartResponse(cart, cartSetters);
     } catch {
-      // keep previous state
+      // Same account keeps its cart; a switched account must not.
+      if (accountRef.current !== forAccount) setItems([]);
     } finally {
       setLoading(false);
     }
-  }, [coupon, cartSetters, pricingContext]);
+  }, [accountId, coupon, cartSetters, pricingContext]);
+
+  useEffect(() => {
+    accountRef.current = accountId;
+    setItems([]);
+    setItemTotal(0);
+    setDiscount(0);
+    setCoupon(null);
+    setDeliveryFee(0);
+    setHandlingCharge(0);
+    setTax(0);
+    setServerTotal(0);
+  }, [accountId]);
 
   useEffect(() => {
     refreshCart();
   }, [refreshCart]);
+
+  // Item add/update/remove responses are priced without the coupon, which
+  // silently dropped the discount after a quantity change. Re-price with the
+  // applied coupon whenever one is active.
+  const applyMutation = useCallback(
+    async (cart: ApiCart) => {
+      applyCartResponse(cart, cartSetters);
+      if (coupon) await refreshCart();
+    },
+    [coupon, cartSetters, refreshCart],
+  );
 
   const mergeGuestCartOnLogin = useCallback(async () => {
     if (!isAuthenticated() || syncing.current) return;
@@ -296,7 +340,7 @@ export const CartProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           variantId: product.variantId,
           quantity: 1,
         });
-        applyCartResponse(cart, cartSetters);
+        await applyMutation(cart);
       } catch (err) {
         const msg = getErrorMessage(err, 'Could not add to cart');
         const only = msg.match(/only\s+(\d+)/i);
@@ -305,7 +349,7 @@ export const CartProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         setLoading(false);
       }
     },
-    [addToCartGuest, cartSetters, items],
+    [addToCartGuest, applyMutation, items],
   );
 
   const changeQty = useCallback(
@@ -316,6 +360,13 @@ export const CartProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       const max = line.maxOrderLimit ?? maxOrderLimit;
       if (delta > 0 && max != null && max > 0 && line.quantity >= max) {
         showToast(`You can add only ${max} of this item`, 'err');
+        return;
+      }
+      // Guest carts never round-trip through the server, so the stock cap must be
+      // enforced here (signed-in carts are also validated server-side).
+      const stock = line.stockQuantity;
+      if (delta > 0 && stock != null && line.quantity >= stock) {
+        showToast(`Only ${stock} unit(s) available.`, 'err');
         return;
       }
 
@@ -341,7 +392,7 @@ export const CartProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         } else {
           cart = await cartApi.updateItem(line.id, { quantity: nextQty });
         }
-        applyCartResponse(cart, cartSetters);
+        await applyMutation(cart);
       } catch (err) {
         const msg = getErrorMessage(err, 'Could not update cart');
         const only = msg.match(/only\s+(\d+)/i);
@@ -350,7 +401,7 @@ export const CartProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         setLoading(false);
       }
     },
-    [items, cartSetters],
+    [items, applyMutation],
   );
 
   const incrementItem = useCallback(
@@ -377,7 +428,7 @@ export const CartProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       setLoading(true);
       try {
         const cart = await cartApi.removeItem(line.id);
-        applyCartResponse(cart, cartSetters);
+        await applyMutation(cart);
         showToast('Removed from cart');
       } catch {
         showToast('Could not remove item', 'err');
@@ -385,7 +436,7 @@ export const CartProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         setLoading(false);
       }
     },
-    [items, cartSetters],
+    [items, applyMutation],
   );
 
   const applyCoupon = useCallback(
@@ -404,15 +455,17 @@ export const CartProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           })),
           delivery_fee: deliveryFee,
         });
-        if (result.valid && (result.discount_amount ?? 0) > 0) {
+        const amount = result.discount_amount ?? 0;
+        const accepted = result.valid && (amount > 0 || result.is_cashback || /free_delivery/i.test(result.coupon_type || ''));
+        if (accepted) {
           setCoupon(normalized);
-          setDiscount(result.discount_amount ?? 0);
-          showToast(`Coupon ${normalized} applied`);
+          setDiscount(amount);
+          showToast(result.is_cashback ? `${normalized} applied — cashback after delivery` : `Coupon ${normalized} applied`);
           if (isAuthenticated()) await refreshCart();
         } else {
           setCoupon(null);
           setDiscount(0);
-          showToast(result.message || result.error || 'Invalid or expired coupon', 'err');
+          showToast(result.message || result.error || couponErrorText(result.error_code), 'err');
         }
       } catch {
         showToast('Could not validate coupon', 'err');

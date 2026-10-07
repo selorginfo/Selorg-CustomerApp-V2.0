@@ -123,5 +123,36 @@ $RECYCLE.BIN/
 *.swp
 *~
 
-# Accidental empty file from a mistyped npx command
-/npx
+# React Native / Node
+node_modules/
+.metro/
+
+# Android / Gradle
+.gradle/
+android/.gradle/
+android/build/
+android/app/build/
+
+# CMake / NDK generated files
+.cxx/
+**/.cxx/
+android/.cxx/
+android/app/.cxx/
+
+# Native build outputs
+build/
+**/build/
+
+# CMake generated files
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+build.ninja
+rules.ninja
+compile_commands.json
+*.ninja
+*.o
+*.a
+
+# React Native generated native files
+android/app/.externalNativeBuild/

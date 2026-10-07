@@ -6,11 +6,13 @@ import {
   NativeSyntheticEvent,
   Pressable,
   ScrollView,
+  Share,
   StyleSheet,
   Text,
   useWindowDimensions,
   View,
 } from 'react-native';
+import { clearStockAlert, isStockAlertSet, setStockAlert } from '../../utils/stockAlerts';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -27,6 +29,7 @@ import {
 } from '../../components';
 import { catalogApi } from '../../services/catalog.service';
 import type { ApiProduct, ApiProductDetail } from '../../services/catalog.service';
+import { resolveListingStock, resolveMaxOrderLimit } from '../../utils/catalogMappers';
 import { useCart } from '../../context/CartContext';
 import { useWishlist } from '../../context/WishlistContext';
 import { useAddress } from '../../context/AddressContext';
@@ -45,33 +48,53 @@ type Variant = NonNullable<ApiProductDetail['variants']>[number];
 const BENEFITS = ['Farm fresh', 'Quality checked', 'Naturally ripened', 'No preservatives'];
 const CLEAN_PROMISE = ['Pesticide-Free', 'Fertilizer-Free', 'Chemical-Free', 'Non-GMO'];
 
-/** The four accordions the design ships on the PDP. */
-const ACCORDIONS: { key: string; title: string; body: string }[] = [
-  {
-    key: 'details',
-    title: 'Product details',
-    body:
-      'Hand-picked, quality-checked produce sourced daily from partner organic farms. Stored cold and delivered from the darkstore nearest to you for maximum freshness.',
-  },
-  {
-    key: 'nutrition',
-    title: 'Nutrition information',
-    body:
-      'A natural source of vitamins, fibre and antioxidants. Free from artificial colours, flavours and preservatives.',
-  },
-  {
-    key: 'storage',
-    title: 'Storage & specifications',
-    body:
-      'Keep refrigerated. Best consumed within 3–5 days of delivery. Net quantity as per the selected size. Country of origin: India.',
-  },
-  {
-    key: 'return',
-    title: 'Return & refund',
-    body:
-      'Not satisfied? Report within 24 hours of delivery for a full refund or replacement — no questions asked.',
-  },
-];
+/** Copy used only when the product record has nothing of its own for a section. */
+const FALLBACK_DESCRIPTION =
+  'Fresh, naturally ripened and lab-tested for purity. Hand-picked and delivered from the darkstore nearest you.';
+const RETURN_POLICY =
+  'Not satisfied? Report within 24 hours of delivery for a full refund or replacement — no questions asked.';
+
+/** Product-specific copy the detail API sends (description object, highlights, origin, shelf life…). */
+type ProductContent = {
+  description?: string | { about?: string; nutrition?: string; originOfPlace?: string; healthBenefits?: string; raw?: string };
+  highlights?: string[];
+  deliveryInfo?: string;
+  countryOfOrigin?: string;
+  shelfLife?: { value?: number; type?: string };
+  attributes?: { weight?: string; size?: string };
+};
+
+const clean = (s: unknown) => (typeof s === 'string' ? s.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim() : '');
+
+function productCopy(p: ApiProduct) {
+  const c = p as unknown as ProductContent;
+  const desc = typeof c.description === 'string' ? { about: c.description } : c.description || {};
+  const about = clean(desc.about) || clean(desc.raw);
+  const highlights = (Array.isArray(c.highlights) ? c.highlights : []).map(clean).filter(Boolean).slice(0, 6);
+  const origin = clean(desc.originOfPlace) || clean(c.countryOfOrigin);
+  const shelf =
+    c.shelfLife && Number(c.shelfLife.value) > 0
+      ? `Shelf life: ${c.shelfLife.value} ${clean(c.shelfLife.type) || 'days'}.`
+      : '';
+  const weight = clean(c.attributes?.weight) || clean(c.attributes?.size);
+  const specs = [weight ? `Net quantity: ${weight}.` : '', shelf, origin ? `Origin: ${origin}.` : '']
+    .filter(Boolean)
+    .join(' ');
+  const accordions: { key: string; title: string; body: string }[] = [];
+  if (about) accordions.push({ key: 'details', title: 'Product details', body: about });
+  const nutrition = clean(desc.nutrition);
+  if (nutrition) accordions.push({ key: 'nutrition', title: 'Nutrition information', body: nutrition });
+  const benefits = clean(desc.healthBenefits);
+  if (benefits) accordions.push({ key: 'benefits', title: 'Health benefits', body: benefits });
+  if (specs) accordions.push({ key: 'storage', title: 'Storage & specifications', body: specs });
+  accordions.push({ key: 'return', title: 'Return & refund', body: RETURN_POLICY });
+  return {
+    description: about || FALLBACK_DESCRIPTION,
+    highlights: highlights.length ? highlights : BENEFITS,
+    delivery: clean(c.deliveryInfo),
+    accordions,
+  };
+}
 
 function StarRow({ value, size = 14 }: { value: number; size?: number }) {
   const rounded = Math.round(value);
@@ -108,8 +131,9 @@ function getMrp(p: ApiProduct): number { return Number(p.mrp ?? p.originalPrice 
 function getUnit(p: ApiProduct): string {
   return (Array.isArray(p.variants) && p.variants[0]?.size) || p.size || p.quantity || p.uom || '1 unit';
 }
-function getStock(p: ApiProduct): number {
-  return typeof p.stockQuantity === 'number' ? p.stockQuantity : (p.stock !== false && p.stock !== 0 ? 99 : 0);
+/** Same rule as Home / Search / Category so a product can't be sold out in one and addable in another. */
+function getStock(p: ApiProduct): number | null {
+  return resolveListingStock(p);
 }
 
 export default function ProductDetail() {
@@ -131,11 +155,16 @@ export default function ProductDetail() {
   const [zoomOpen, setZoomOpen] = useState(false);
   const [variantIndex, setVariantIndex] = useState(0);
   const [openAcc, setOpenAcc] = useState<string | null>('details');
+  const [alertSet, setAlertSet] = useState(false);
 
   const navOpacity = useRef(new Animated.Value(0)).current;
   const priceFade = useRef(new Animated.Value(1)).current;
 
   const productId = params?.productId;
+
+  useEffect(() => {
+    if (productId) setAlertSet(isStockAlertSet(productId));
+  }, [productId]);
 
   useEffect(() => {
     if (!productId) { setError(true); setLoading(false); return; }
@@ -242,7 +271,7 @@ export default function ProductDetail() {
 
   const stockLabel = oos
     ? 'Currently out of stock'
-    : stockQty <= 3
+    : stockQty != null && stockQty <= 3
       ? `Only ${stockQty} left in stock`
       : 'In stock, ready to pack';
 
@@ -255,10 +284,36 @@ export default function ProductDetail() {
     stockQuantity: stockQty,
     image: gallery[0] ? { uri: gallery[0] } : undefined,
     variantId: activeVariant?.id,
-    maxOrderLimit: typeof product.maxOrderLimit === 'number' ? product.maxOrderLimit : null,
+    maxOrderLimit: resolveMaxOrderLimit(product),
   };
 
   const goCart = () => navigation.navigate('Cart');
+
+  const copy = productCopy(product);
+
+  const onShare = async () => {
+    try {
+      const priceText = formatCurrency(price);
+      await Share.share({
+        title: product.name,
+        message: `${product.name} — ${priceText} on Selorg, India's lab-tested organic grocery app.\nhttps://selorg.com/products/${product._id}`,
+      });
+    } catch {
+      showToast('Could not open the share sheet', 'err');
+    }
+  };
+
+  const onToggleStockAlert = () => {
+    if (alertSet) {
+      clearStockAlert(product._id);
+      setAlertSet(false);
+      showToast('Back-in-stock alert removed', 'info');
+      return;
+    }
+    setStockAlert(product._id, product.name);
+    setAlertSet(true);
+    showToast("We'll notify you when it's back in stock", 'ok');
+  };
 
   return (
     <View style={styles.root} testID="product-detail">
@@ -285,7 +340,8 @@ export default function ProductDetail() {
             />
           </Pressable>
           <Pressable
-            onPress={() => showToast('Share link copied', 'info')}
+            onPress={onShare}
+            accessibilityLabel="Share product"
             style={styles.glassBtn}
             hitSlop={8}
           >
@@ -366,9 +422,8 @@ export default function ProductDetail() {
             </Pressable>
           ) : null}
 
-          <Text style={styles.description}>
-            Fresh, naturally ripened and lab-tested for purity. Hand-picked and delivered from the darkstore
-            nearest you.
+          <Text style={styles.description} numberOfLines={4}>
+            {copy.description}
           </Text>
 
           {/* Price */}
@@ -416,7 +471,7 @@ export default function ProductDetail() {
             <View style={styles.infoRow}>
               <Icon name="truck" size={19} color={colors.primary} strokeWidth={2} />
               <View style={styles.infoTextWrap}>
-                <Text style={styles.infoTitle}>Delivery in 20–30 mins</Text>
+                <Text style={styles.infoTitle}>{copy.delivery || 'Delivery in 20–30 mins'}</Text>
                 {deliverTo ? <Text style={styles.infoSub}>Delivering to {deliverTo}</Text> : null}
               </View>
             </View>
@@ -436,7 +491,7 @@ export default function ProductDetail() {
           <View style={styles.section}>
             <Text style={styles.blockTitle}>Why you&rsquo;ll love it</Text>
             <View style={styles.benefitGrid}>
-              {BENEFITS.map(b => (
+              {copy.highlights.map(b => (
                 <View key={b} style={styles.benefitCell}>
                   <Icon name="check" size={15} color={colors.primary} strokeWidth={2.6} />
                   <Text style={styles.benefitLabel} numberOfLines={2}>{b}</Text>
@@ -457,7 +512,7 @@ export default function ProductDetail() {
           {/* Accordions */}
           <View style={styles.section}>
             <Text style={styles.sectionHeading}>Product information</Text>
-            {ACCORDIONS.map(a => {
+            {copy.accordions.map(a => {
               const open = openAcc === a.key;
               return (
                 <View key={a.key} style={styles.accRow}>
@@ -559,6 +614,7 @@ export default function ProductDetail() {
                               price: rPrice,
                               mrp: rMrp,
                               stockQuantity: rStock,
+                              maxOrderLimit: resolveMaxOrderLimit(rp),
                               image: rPhoto ? { uri: rPhoto } : undefined,
                             })
                           }
@@ -596,7 +652,7 @@ export default function ProductDetail() {
               variant="block"
               testIDPrefix={`product-${product._id}`}
               onAdd={() => addToCart(cartProduct)}
-              onIncrement={() => incrementItem(product._id, activeVariant?.id)}
+              onIncrement={() => incrementItem(product._id, activeVariant?.id, cartProduct.maxOrderLimit)}
               onDecrement={() => decrementItem(product._id, activeVariant?.id)}
             />
           </View>
@@ -605,9 +661,10 @@ export default function ProductDetail() {
         <View style={styles.footerAction}>
           {oos ? (
             <PrimaryButton
-              label="Notify me"
+              label={alertSet ? 'Alert set · tap to cancel' : 'Notify me'}
               icon="bell"
-              onPress={() => showToast("We'll notify you when it's back in stock", 'info')}
+              kind={alertSet ? 'ghost' : undefined}
+              onPress={onToggleStockAlert}
             />
           ) : qty > 0 ? (
             <PrimaryButton label="Go to cart" icon="cart" onPress={goCart} />

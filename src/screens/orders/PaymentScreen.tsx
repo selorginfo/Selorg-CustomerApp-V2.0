@@ -33,6 +33,7 @@ export default function PaymentScreen() {
     placeOrder,
     retryPayment,
     gatewaySessionPayload,
+    pendingGatewayOrderId,
     completeGatewayPayment,
     cancelGatewayPayment,
     activeOrder,
@@ -51,7 +52,7 @@ export default function PaymentScreen() {
     }
     const result = await placeOrder(method, route.params?.receiver);
     if (result.success && result.order && !result.needsGateway) {
-      await wallet.refreshWallet();
+      await wallet.reloadWallet();
       goToOrderPlaced(result.order.id);
     }
   };
@@ -82,11 +83,16 @@ export default function PaymentScreen() {
     url: string;
     response?: Record<string, unknown>;
   }) => {
-    const orderId = activeOrder?.id;
-    if (!orderId) return;
+    const orderId = pendingGatewayOrderId || activeOrder?.id;
+    if (!orderId) {
+      cancelGatewayPayment();
+      showToast('We could not confirm this payment. Check Orders before paying again.', 'err');
+      navigation.navigate('Checkout');
+      return;
+    }
     const result = await completeGatewayPayment(orderId, response ?? url);
     if (result.success && result.order) {
-      await wallet.refreshWallet();
+      await wallet.reloadWallet();
       goToOrderPlaced(result.order.id);
       return;
     }
@@ -191,8 +197,7 @@ export default function PaymentScreen() {
           testID="payment-submit"
           label={method === 'cod' ? `Place order · ${formatCurrency(grandTotal)}` : `Pay ${formatCurrency(grandTotal)}`}
           icon={method === 'cod' ? 'box' : 'lock'}
-          disabled={(method === 'wallet' && !walletCovers) || payState === 'processing'}
-          loading={payState === 'processing'}
+          disabled={(method === 'wallet' && !walletCovers) || payState === 'awaiting_gateway'}
           onPress={handlePay}
         />
       </View>

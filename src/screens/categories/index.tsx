@@ -61,7 +61,15 @@ export default function CategoriesScreen() {
       }
       const matched = subsOf(c).filter(sub => sub.name?.toLowerCase().includes(q));
       if (matched.length) {
-        acc.push({ ...c, children: undefined, subs: matched.map(m => m.name) } as ApiCategory);
+        // Keep the matched child records so tiles still navigate by slug
+        // (falling back to names only drops the slug and finds no products).
+        const ids = new Set(matched.map(m => m.id));
+        const children = c.children?.filter(ch => ids.has(ch._id));
+        acc.push(
+          (children?.length
+            ? { ...c, children }
+            : { ...c, children: undefined, subs: matched.map(m => m.name) }) as ApiCategory,
+        );
       }
       return acc;
     }, []);
@@ -100,7 +108,7 @@ export default function CategoriesScreen() {
             focused
             value={query}
             onChangeText={setQuery}
-            onSubmit={() => navigation.navigate('Search')}
+            onSubmit={() => navigation.navigate('Search', { q: query.trim() || undefined })}
           />
         </View>
       ) : null}

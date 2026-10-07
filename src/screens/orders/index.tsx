@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { Image, ImageSourcePropType, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import LoadMoreFooter from '../../components/LoadMoreFooter';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { colors, fontFamily, radii, shadows } from '../../theme';
 import { ScreenContainer, Header, StatusPill, PrimaryButton, StateView, SkeletonList, useBottomNavHeight } from '../../components';
@@ -32,7 +33,16 @@ export default function Orders() {
   // The floating nav overlays the screen, so pad content out from under it.
   const navH = useBottomNavHeight();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
-  const { orders, reorder, loading } = useOrders();
+  const { orders, reorder, loading, refresh, refreshActiveOrder, hasMore, loadingMore, loadMore } = useOrders();
+
+  // Re-fetch every time the screen is shown so status changes made elsewhere
+  // (admin, rider, another device) appear without restarting the app.
+  useFocusEffect(
+    React.useCallback(() => {
+      refresh();
+      refreshActiveOrder();
+    }, [refresh, refreshActiveOrder]),
+  );
   const [filter, setFilter] = useState<FilterKey>('all');
 
   const isTabRoot = navigation.getParent()?.getState()?.type === 'tab';
@@ -163,7 +173,7 @@ export default function Orders() {
                         label="Track"
                         size="sm"
                         fullWidth={false}
-                        onPress={() => navigation.navigate('Tracking')}
+                        onPress={() => navigation.navigate('Tracking', { orderId: order.id })}
                       />
                     ) : order.status === 'delivered' ? (
                       <>
@@ -191,6 +201,7 @@ export default function Orders() {
               </Pressable>
             );
           })}
+          <LoadMoreFooter hasMore={hasMore} loading={loadingMore} onPress={loadMore} testID="orders-load-more" />
         </ScrollView>
       )}
     </ScreenContainer>

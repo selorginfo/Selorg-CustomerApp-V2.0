@@ -58,7 +58,8 @@ interface AddressContextType {
 const AddressContext = createContext<AddressContextType | undefined>(undefined);
 
 export const AddressProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, user } = useAuth();
+  const accountId = user?.id || '';
   const [addresses, setAddresses] = useState<Address[]>([]);
   const [loading, setLoading] = useState(false);
   const [selectedAddressId, setSelectedAddressId] = useState<string>('');
@@ -92,6 +93,8 @@ export const AddressProvider: React.FC<{ children: ReactNode }> = ({ children })
 
   // Re-load when auth flips to true (OTP login) or clears on logout.
   useEffect(() => {
+    setAddresses([]);
+    setSelectedAddressId('');
     if (isAuthenticated) {
       loadAddresses();
     } else {
@@ -99,7 +102,7 @@ export const AddressProvider: React.FC<{ children: ReactNode }> = ({ children })
       setSelectedAddressId('');
       mmkvStorage.removeItem(SELECTED_ADDRESS_KEY);
     }
-  }, [isAuthenticated, loadAddresses]);
+  }, [accountId, isAuthenticated, loadAddresses]);
 
   const selectedAddress = useMemo(
     () => addresses.find(a => a.id === selectedAddressId) || addresses.find(a => a.isDefault),
@@ -128,8 +131,9 @@ export const AddressProvider: React.FC<{ children: ReactNode }> = ({ children })
       showToast('Enter a house number and street (at least 3 characters)', 'err');
       return false;
     }
-    if (!isValidAddressLine(draft.line2)) {
-      showToast('Enter the area or locality', 'err');
+    // Line 2 is labelled optional (and optional on the server) — only check it when filled.
+    if (draft.line2.trim() && !isValidAddressLine(draft.line2)) {
+      showToast('Area or locality must be 3–120 characters', 'err');
       return false;
     }
     if (draft.landmark.trim() && !isValidLandmark(draft.landmark)) {

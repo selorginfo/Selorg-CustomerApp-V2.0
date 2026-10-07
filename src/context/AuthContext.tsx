@@ -13,6 +13,7 @@ import { closeCustomerSocket } from '../services/realtime.service';
 import type { OtpChannel } from '../services/auth.service';
 import { getErrorCode, getErrorMessage } from '../utils/apiError';
 import { mmkvStorage } from '../lib/storage';
+import { unregisterPushToken } from '../services/pushNotifications';
 
 export interface AppUser {
   id: string;
@@ -38,12 +39,14 @@ interface AuthContextType {
   otpSession: OtpSession | null;
   resendCooldown: number;
   otpAttemptsLeft: number;
+  /** Signed in, but the signup profile (name) or the location step was never finished. */
+  onboardingStep: 'profile' | 'location' | null;
   sendOtp: (
     identifier: { phone?: string; email?: string },
     mode: OtpSession['mode'],
     channel?: OtpSession['channel'],
   ) => Promise<{ success: boolean; message?: string; code?: string }>;
-  resendOtp: () => Promise<void>;
+  resendOtp: () => Promise<{ success: boolean; message?: string }>;
   verifyOtp: (
     code: string,
   ) => Promise<{
@@ -53,6 +56,7 @@ interface AuthContextType {
     nextStep?: 'profile' | 'home';
   }>;
   completeSignupProfile: (fullName: string, email?: string) => Promise<void>;
+  completeLocationStep: () => void;
   continueAsGuest: () => void;
   logout: () => void;
   refreshProfile: () => Promise<void>;
@@ -74,6 +78,14 @@ const CHANNEL_MAP: Record<NonNullable<OtpSession['channel']>, OtpChannel> = {
 };
 
 const errText = getErrorMessage;
+
+export const MAX_OTP_ATTEMPTS = 5;
+/** Persisted so a kill mid-signup resumes at the unfinished step instead of landing on Home. */
+const ONBOARDING_STEP_KEY = 'onboardingStep';
+const readOnboardingStep = (): 'profile' | 'location' | null => {
+  const v = mmkvStorage.getItem(ONBOARDING_STEP_KEY);
+  return v === 'profile' || v === 'location' ? v : null;
+};
 const errCode = getErrorCode;
 
 function mapProfileUser(raw: Record<string, unknown>, fallback?: Partial<AppUser>): AppUser {
@@ -99,7 +111,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [isLoading, setIsLoading] = useState(true);
   const [otpSession, setOtpSession] = useState<OtpSession | null>(null);
   const [resendCooldown, setResendCooldown] = useState(0);
-  const [otpAttemptsLeft, setOtpAttemptsLeft] = useState(5);
+  const [otpAttemptsLeft, setOtpAttemptsLeft] = useState(MAX_OTP_ATTEMPTS);
+  const [onboardingStep, setOnboardingStepState] = useState<'profile' | 'location' | null>(null);
   const [pendingUser, setPendingUser] = useState<AppUser | null>(null);
   const cooldownTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const verifyInFlight = useRef(false);
@@ -112,6 +125,12 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     } catch {
       // non-fatal
     }
+  }, []);
+
+  const setOnboardingStep = useCallback((step: 'profile' | 'location' | null) => {
+    setOnboardingStepState(step);
+    if (step) mmkvStorage.setItem(ONBOARDING_STEP_KEY, step);
+    else mmkvStorage.removeItem(ONBOARDING_STEP_KEY);
   }, []);
 
   const refreshProfile = useCallback(async () => {
@@ -142,6 +161,19 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         const token = Storage.getItem('accessToken');
         if (token) {
           await refreshProfile();
+          // An account with no name never finished Profile Setup.
+          const raw = Storage.getItem('userData');
+          let saved: AppUser | null = null;
+          try {
+            saved = raw ? (JSON.parse(raw) as AppUser) : null;
+          } catch {
+            saved = null;
+          }
+          const step = readOnboardingStep() || (saved?.name?.trim() ? null : 'profile');
+          if (step) {
+            setOnboardingStep(step);
+            if (step === 'profile') setPendingUser(saved);
+          }
         } else if (mmkvStorage.getItem('isGuest') === '1') {
           setIsGuest(true);
         }
@@ -149,7 +181,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         setIsLoading(false);
       }
     })();
-  }, [refreshProfile]);
+  }, [refreshProfile, setOnboardingStep]);
 
   const startCooldown = useCallback((seconds: number) => {
     if (cooldownTimer.current) clearInterval(cooldownTimer.current);
@@ -190,7 +222,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             : { phoneNumber: phone, preferredChannel, intent },
         );
         setOtpSession({ phone, email, mode, channel, sessionId: res.sessionId });
-        setOtpAttemptsLeft(5);
+        setOtpAttemptsLeft(MAX_OTP_ATTEMPTS);
         startCooldown(res.resendCooldownSeconds ?? 30);
         return { success: true };
       } catch (e: unknown) {
@@ -209,7 +241,10 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   );
 
   const resendOtp = useCallback(async () => {
-    if (resendCooldown > 0 || !otpSession?.sessionId) return;
+    if (resendCooldown > 0) return { success: false };
+    if (!otpSession?.sessionId) {
+      return { success: false, message: 'Session expired. Go back and request a new code.' };
+    }
     try {
       const res = await authApi.resendOtp({ sessionId: otpSession.sessionId });
       // Keep the active sessionId; refresh cooldown from server.
@@ -220,10 +255,11 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             : prev,
         );
       }
-      setOtpAttemptsLeft(5);
+      setOtpAttemptsLeft(MAX_OTP_ATTEMPTS);
       startCooldown(res.resendCooldownSeconds ?? 30);
-    } catch {
-      // keep cooldown
+      return { success: true, message: 'A new code has been sent' };
+    } catch (e: unknown) {
+      return { success: false, message: errText(e, 'Could not resend the code. Please try again.') };
     }
   }, [resendCooldown, otpSession?.sessionId, startCooldown]);
 
@@ -238,6 +274,13 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }> => {
       if (code.length !== 4) return { success: false, message: 'Enter the 4-digit code' };
       if (!otpSession?.sessionId) return { success: false, message: 'Session expired, please retry' };
+      if (otpAttemptsLeft <= 0) {
+        return {
+          success: false,
+          code: 'OTP_LOCKED',
+          message: 'Too many incorrect attempts. Request a new code.',
+        };
+      }
       if (verifyInFlight.current) {
         return { success: false, message: 'Verification already in progress' };
       }
@@ -256,6 +299,12 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
         Storage.setItem('accessToken', res.accessToken);
         mmkvStorage.removeItem('isGuest');
+        try {
+          // Lets a relaunch before Profile Setup is finished find the account.
+          Storage.setItem('userId', res.user._id);
+        } catch {
+          // non-fatal
+        }
 
         const appUser: AppUser = {
           id: res.user._id,
@@ -274,6 +323,12 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
         if (otpSession.mode === 'signup' || (res.isNewUser && !appUser.name)) {
           setPendingUser(appUser);
+          try {
+            Storage.setItem('userData', JSON.stringify(appUser));
+          } catch {
+            // non-fatal
+          }
+          setOnboardingStep('profile');
           return { success: true, nextStep: 'profile' };
         }
 
@@ -292,12 +347,19 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         }
         const left = Math.max(0, otpAttemptsLeft - 1);
         setOtpAttemptsLeft(left);
+        if (left <= 0) {
+          return {
+            success: false,
+            code: 'OTP_LOCKED',
+            message: 'Too many incorrect attempts. Request a new code.',
+          };
+        }
         return { success: false, code, message: errText(e, 'Invalid OTP, please try again') };
       } finally {
         verifyInFlight.current = false;
       }
     },
-    [otpSession, otpAttemptsLeft, persistUser],
+    [otpSession, otpAttemptsLeft, persistUser, setOnboardingStep],
   );
 
   const completeSignupProfile = useCallback(
@@ -313,9 +375,14 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       setIsGuest(false);
       mmkvStorage.removeItem('isGuest');
       setPendingUser(null);
+      setOnboardingStep('location');
     },
-    [pendingUser, user?.id, persistUser],
+    [pendingUser, user?.id, persistUser, setOnboardingStep],
   );
+
+  const completeLocationStep = useCallback(() => {
+    setOnboardingStep(null);
+  }, [setOnboardingStep]);
 
   const continueAsGuest = useCallback(() => {
     setIsGuest(true);
@@ -332,6 +399,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   }, []);
 
   const logout = useCallback(() => {
+    // Before the token is cleared: stop pushes for this account on this device.
+    unregisterPushToken(Storage.getItem('accessToken'));
     authApi.logout().catch(() => {});
     closeCustomerSocket();
     Storage.clearAuth();
@@ -345,8 +414,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     setIsGuest(false);
     setOtpSession(null);
     setPendingUser(null);
+    setOnboardingStep(null);
     verifyInFlight.current = false;
-  }, []);
+  }, [setOnboardingStep]);
 
   useEffect(() => {
     setUnauthorizedHandler(() => logout());
@@ -361,10 +431,12 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       otpSession,
       resendCooldown,
       otpAttemptsLeft,
+      onboardingStep,
       sendOtp,
       resendOtp,
       verifyOtp,
       completeSignupProfile,
+      completeLocationStep,
       continueAsGuest,
       logout,
       refreshProfile,
@@ -378,10 +450,12 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       otpSession,
       resendCooldown,
       otpAttemptsLeft,
+      onboardingStep,
       sendOtp,
       resendOtp,
       verifyOtp,
       completeSignupProfile,
+      completeLocationStep,
       continueAsGuest,
       logout,
       refreshProfile,

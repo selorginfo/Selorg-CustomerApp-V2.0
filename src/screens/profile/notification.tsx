@@ -1,12 +1,14 @@
 import React from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import LoadMoreFooter from '../../components/LoadMoreFooter';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Header, Icon, ScreenContainer, StateView } from '../../components';
 import type { IconName } from '../../components';
 import { colors, fontFamily, radii, spacing } from '../../theme';
 import type { NotificationItem } from '../../context/NotificationsContext';
 import { useNotifications } from '../../context/NotificationsContext';
+import { openNotificationTarget } from '../../utils/notificationRoute';
 import type { RootStackParamList } from '../../navigation/types';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -19,7 +21,15 @@ const TYPE_ICON: Record<string, IconName> = {
 
 export default function NotificationsScreen() {
   const navigation = useNavigation<Nav>();
-  const { notifications, markRead, markAllRead, deleteNotification } = useNotifications();
+  const { notifications, markRead, markAllRead, deleteNotification, refresh, hasMore, loadingMore, loadMore } = useNotifications();
+
+  // Re-fetch every time the screen is shown so status changes made elsewhere
+  // (admin, rider, another device) appear without restarting the app.
+  useFocusEffect(
+    React.useCallback(() => {
+      refresh();
+    }, [refresh]),
+  );
   const hasUnread = notifications.some((n: NotificationItem) => !n.read);
 
   return (
@@ -47,7 +57,10 @@ export default function NotificationsScreen() {
           {notifications.map((n: NotificationItem) => (
             <Pressable
               key={n.id}
-              onPress={() => markRead(n.id)}
+              onPress={() => {
+                markRead(n.id);
+                openNotificationTarget(n.data, n.type);
+              }}
               style={[styles.row, { backgroundColor: n.read ? colors.card : colors.white, borderColor: n.read ? colors.border : colors.primarySoft }]}
             >
               <View style={styles.iconTile}>
@@ -68,6 +81,7 @@ export default function NotificationsScreen() {
               </Pressable>
             </Pressable>
           ))}
+          <LoadMoreFooter hasMore={hasMore} loading={loadingMore} onPress={loadMore} />
         </ScrollView>
       )}
     </ScreenContainer>

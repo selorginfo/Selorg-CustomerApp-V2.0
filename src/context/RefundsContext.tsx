@@ -4,6 +4,11 @@ import type { ApiRefund } from '../services/refunds.service';
 import { Storage } from '../api/storage';
 import { showToast } from '../utils/toast';
 import type { Order } from './OrdersContext';
+import { useAuth } from './AuthContext';
+import { getErrorMessage } from '../utils/apiError';
+import { usePager } from '../utils/usePager';
+
+const REFUNDS_PAGE = 50;
 
 export interface Refund {
   id: string;
@@ -18,7 +23,11 @@ export interface Refund {
 interface RefundsContextType {
   refunds: Refund[];
   loading: boolean;
-  submitReturn: (order: Order, reasonText: string, reasonLabel?: string, amount?: number) => Promise<void>;
+  /** Resolves true only when the server accepted the request. */
+  submitReturn: (order: Order, reasonText: string, reasonLabel?: string, amount?: number) => Promise<boolean>;
+  hasMore: boolean;
+  loadingMore: boolean;
+  loadMore: () => Promise<void>;
   refresh: () => Promise<void>;
 }
 
@@ -43,8 +52,17 @@ function toRefund(raw: ApiRefund): Refund {
 }
 
 export const RefundsProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
+  const { user } = useAuth();
+  const userId = user?.id || '';
   const [refunds, setRefunds] = useState<Refund[]>([]);
   const [loading, setLoading] = useState(false);
+
+  const fetchRefundsPage = useCallback(
+    async (page: number) => ((await refundsApi.listRefunds({ page, limit: REFUNDS_PAGE })) ?? []).map(toRefund),
+    [],
+  );
+  const pager = usePager(fetchRefundsPage, REFUNDS_PAGE, setRefunds);
+  const { firstPageLoaded } = pager;
 
   const loadRefunds = useCallback(async () => {
     if (!Storage.getItem('accessToken')) {
@@ -53,19 +71,30 @@ export const RefundsProvider: React.FC<{ children: ReactNode }> = ({ children })
     }
     setLoading(true);
     try {
-      const raw = await refundsApi.listRefunds({ limit: 50 });
-      setRefunds((raw ?? []).map(toRefund));
+      const list = await fetchRefundsPage(1);
+      setRefunds(list);
+      firstPageLoaded(list.length);
     } catch {
       // keep previous state
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [fetchRefundsPage, firstPageLoaded]);
 
-  useEffect(() => { loadRefunds(); }, [loadRefunds]);
+  // Reload per account so a previous user's refunds never linger.
+  useEffect(() => {
+    setRefunds([]);
+    if (!userId) return;
+    loadRefunds();
+  }, [userId, loadRefunds]);
 
   const submitReturn = useCallback(
-    async (order: Order, reasonText: string, reasonLabel?: string, amount?: number) => {
+    async (order: Order, reasonText: string, reasonLabel?: string, amount?: number): Promise<boolean> => {
+      // Returns are only for delivered orders (the server enforces this too).
+      if (order.status !== 'delivered') {
+        showToast('Returns can be requested only after the order is delivered', 'err');
+        return false;
+      }
       try {
         const raw = await refundsApi.createRefundRequest({
           orderId: order.id,
@@ -75,8 +104,10 @@ export const RefundsProvider: React.FC<{ children: ReactNode }> = ({ children })
         });
         setRefunds(prev => [toRefund(raw), ...prev]);
         showToast('Return request submitted');
-      } catch {
-        showToast('Could not submit return request', 'err');
+        return true;
+      } catch (err) {
+        showToast(getErrorMessage(err, 'Could not submit return request'), 'err');
+        return false;
       }
     },
     [],
@@ -84,7 +115,8 @@ export const RefundsProvider: React.FC<{ children: ReactNode }> = ({ children })
 
   const value = useMemo<RefundsContextType>(() => ({
     refunds, loading, submitReturn, refresh: loadRefunds,
-  }), [refunds, loading, submitReturn, loadRefunds]);
+    hasMore: pager.hasMore, loadingMore: pager.loadingMore, loadMore: pager.loadMore,
+  }), [refunds, loading, submitReturn, loadRefunds, pager.hasMore, pager.loadingMore, pager.loadMore]);
 
   return <RefundsContext.Provider value={value}>{children}</RefundsContext.Provider>;
 };

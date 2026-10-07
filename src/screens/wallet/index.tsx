@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
-import { useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import LoadMoreFooter from '../../components/LoadMoreFooter';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { BottomSheet, Header, Icon, ScreenContainer, StateView } from '../../components';
 import type { IconName } from '../../components';
@@ -11,7 +12,7 @@ import WorldlineCheckoutWebView from '../../components/WorldlineCheckoutWebView'
 
 const TOPUP_PRESETS = [100, 250, 500];
 import type { WalletTxn } from '../../context/WalletContext';
-import { useWallet } from '../../context/WalletContext';
+import { TOPUP_MAX, TOPUP_MIN, useWallet } from '../../context/WalletContext';
 import type { RootStackParamList } from '../../navigation/types';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -36,7 +37,15 @@ function shortDate(ts: string) {
 
 export default function WalletScreen() {
   const navigation = useNavigation<Nav>();
-  const { wallet, refreshWallet, topUp, topUpSessionPayload, completeTopUp, cancelTopUp, topUpProcessing } = useWallet();
+  const { wallet, refreshWallet, reloadWallet, hasMore, loadingMore, loadMore, topUp, topUpSessionPayload, completeTopUp, cancelTopUp, topUpProcessing } = useWallet();
+
+  // Re-fetch every time the screen is shown so status changes made elsewhere
+  // (admin, rider, another device) appear without restarting the app.
+  useFocusEffect(
+    React.useCallback(() => {
+      reloadWallet();
+    }, [reloadWallet]),
+  );
 
   const [amount, setAmount] = useState<number>(TOPUP_PRESETS[0]);
   const [customOpen, setCustomOpen] = useState(false);
@@ -72,14 +81,22 @@ export default function WalletScreen() {
     setAmount(Number(digits) || 0);
   };
 
+  const amountOk = amount >= TOPUP_MIN && amount <= TOPUP_MAX;
+  const amountHint =
+    customOpen && customVal && !amountOk
+      ? `Enter ₹${TOPUP_MIN} – ₹${TOPUP_MAX.toLocaleString('en-IN')}`
+      : null;
+
   const onSelectMethod = async (method: Method) => {
-    if (amount <= 0 || processing) return;
+    if (!amountOk || processing) return;
     setProcessing(true);
     try {
-      await topUp(amount, method);
-      setSheetVisible(false);
-      setCustomOpen(false);
-      setCustomVal('');
+      const started = await topUp(amount, method);
+      if (started) {
+        setSheetVisible(false);
+        setCustomOpen(false);
+        setCustomVal('');
+      }
     } finally {
       setProcessing(false);
     }
@@ -132,15 +149,17 @@ export default function WalletScreen() {
                 placeholder="Amount"
                 placeholderTextColor="rgba(255,255,255,0.7)"
                 style={styles.customInput}
+                maxLength={6}
               />
             </View>
           ) : null}
+          {amountHint ? <Text style={styles.amountHint}>{amountHint}</Text> : null}
 
           <View style={styles.addWrap}>
             <Pressable
-              onPress={() => amount > 0 && setSheetVisible(true)}
-              disabled={amount <= 0}
-              style={[styles.addBtn, amount <= 0 && styles.addBtnDisabled]}
+              onPress={() => amountOk && setSheetVisible(true)}
+              disabled={!amountOk}
+              style={[styles.addBtn, !amountOk && styles.addBtnDisabled]}
               testID="wallet-add-money"
               accessibilityRole="button"
               accessibilityLabel="Add money to wallet"
@@ -179,6 +198,7 @@ export default function WalletScreen() {
             ))}
           </View>
         )}
+        <LoadMoreFooter hasMore={hasMore} loading={loadingMore} onPress={loadMore} />
       </ScrollView>
 
       <BottomSheet visible={sheetVisible} onClose={() => !processing && setSheetVisible(false)}>
@@ -374,6 +394,7 @@ const styles = StyleSheet.create({
   },
   secureLabel: { fontFamily: fontFamily.bold, fontSize: 11.5, color: colors.primaryDark },
   methodSection: { paddingTop: 18 },
+  amountHint: { fontFamily: fontFamily.bold, fontSize: 12, color: colors.white, marginTop: 6, opacity: 0.9 },
   methodHeading: { fontFamily: fontFamily.bold, fontSize: 13, color: colors.text, marginBottom: 12 },
   poweredBy: {
     fontFamily: fontFamily.semibold,

@@ -1,20 +1,36 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Keyboard, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute } from '@react-navigation/native';
+import type { RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { Icon, ProductCard, ScreenContainer, SearchBar, StateView, SkeletonGrid } from '../../components';
+import { Icon, PrimaryButton, ProductCard, ScreenContainer, SearchBar, StateView, SkeletonGrid } from '../../components';
 import { colors, fontFamily } from '../../theme';
 import { catalogApi } from '../../services/catalog.service';
 import type { ApiProduct } from '../../services/catalog.service';
+import { resolveListingStock } from '../../utils/catalogMappers';
 import type { Product } from '../../types/product';
 import type { RootStackParamList } from '../../navigation/types';
 import { useCart } from '../../context/CartContext';
 import { useWishlist } from '../../context/WishlistContext';
+import { mmkvStorage } from '../../lib/storage';
+import { showToast } from '../../utils/toast';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
 const DEBOUNCE_MS = 300;
 const PAGE_SIZE = 40;
+const RECENT_KEY = 'recentSearches';
+const RECENT_MAX = 8;
+
+function readRecent(): string[] {
+  try {
+    const raw = mmkvStorage.getItem(RECENT_KEY);
+    const list = raw ? JSON.parse(raw) : [];
+    return Array.isArray(list) ? list.filter((s): s is string => typeof s === 'string') : [];
+  } catch {
+    return [];
+  }
+}
 
 /**
  * Maps a search payload straight onto the card shape. Every field is taken
@@ -30,16 +46,9 @@ function toProductCard(p: ApiProduct): Product {
   const unit =
     (Array.isArray(p.variants) && p.variants[0]?.size) || p.size || p.quantity || p.uom || '';
 
-  // Sold out only when the API actually says so; `null` means it didn't report
-  // stock at all, which leaves the product orderable without inventing a cap.
-  const stockQuantity =
-    typeof p.stockQuantity === 'number'
-      ? p.stockQuantity
-      : typeof p.stock === 'number'
-        ? p.stock
-        : p.stock === false || p.isSaleable === false || p.isActive === false
-          ? 0
-          : null;
+  // Shared rule with Home / Category / Product Detail: search results don't
+  // join live inventory, so a catalog 0 means "not reported", not sold out.
+  const stockQuantity = resolveListingStock(p);
 
   return {
     id: p._id,
@@ -59,11 +68,18 @@ function toProductCard(p: ApiProduct): Product {
 
 export default function SearchScreen() {
   const navigation = useNavigation<Nav>();
+  const route = useRoute<RouteProp<RootStackParamList, 'Search'>>();
   const cart = useCart();
   const wishlist = useWishlist();
 
-  const [query, setQuery] = useState('');
+  const [query, setQuery] = useState(route.params?.q || '');
   const [results, setResults] = useState<Product[] | null>(null);
+  const [searchError, setSearchError] = useState(false);
+  const [retryKey, setRetryKey] = useState(0);
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [recent, setRecent] = useState<string[]>(readRecent);
   // Default "browse all products" grid, shown while the query is empty.
   const [browse, setBrowse] = useState<Product[] | null>(null);
   const [browseLoading, setBrowseLoading] = useState(true);
@@ -90,26 +106,75 @@ export default function SearchScreen() {
   useEffect(() => {
     const id = ++requestId.current;
 
+    setSearchError(false);
     if (!term) {
       setResults(null);
+      setHasMore(false);
       return undefined;
     }
 
     const timer = setTimeout(() => {
       catalogApi
-        .searchProducts({ q: term, limit: PAGE_SIZE })
+        .searchProducts({ q: term, page: 1, limit: PAGE_SIZE })
         .then(res => {
           if (id !== requestId.current) return;
-          const raw = res?.products || [];
-          setResults(Array.isArray(raw) ? raw.map(toProductCard) : []);
+          const raw = Array.isArray(res?.products) ? res.products : [];
+          setResults(raw.map(toProductCard));
+          setPage(1);
+          const total = res?.meta?.total;
+          setHasMore(typeof total === 'number' ? raw.length < total : raw.length >= PAGE_SIZE);
         })
         .catch(() => {
-          if (id === requestId.current) setResults([]);
+          // A failed request is an error, not "no results".
+          if (id !== requestId.current) return;
+          setResults(null);
+          setSearchError(true);
         });
     }, DEBOUNCE_MS);
 
     return () => clearTimeout(timer);
-  }, [term]);
+  }, [term, retryKey]);
+
+  const rememberSearch = (q: string) => {
+    const t = q.trim();
+    if (t.length < 2) return;
+    const next = [t, ...recent.filter(r => r.toLowerCase() !== t.toLowerCase())].slice(0, RECENT_MAX);
+    setRecent(next);
+    try {
+      mmkvStorage.setItem(RECENT_KEY, JSON.stringify(next));
+    } catch {
+      // non-fatal
+    }
+  };
+
+  const clearRecent = () => {
+    setRecent([]);
+    mmkvStorage.removeItem(RECENT_KEY);
+  };
+
+  const loadMore = async () => {
+    if (loadingMore || !hasMore || !term) return;
+    const id = requestId.current;
+    setLoadingMore(true);
+    try {
+      const next = page + 1;
+      const res = await catalogApi.searchProducts({ q: term, page: next, limit: PAGE_SIZE });
+      if (id !== requestId.current) return;
+      const raw = Array.isArray(res?.products) ? res.products : [];
+      setResults(prev => {
+        const seen = new Set((prev || []).map(p => p.id));
+        return [...(prev || []), ...raw.map(toProductCard).filter(p => !seen.has(p.id))];
+      });
+      setPage(next);
+      const total = res?.meta?.total;
+      const shown = (results?.length || 0) + raw.length;
+      setHasMore(raw.length > 0 && (typeof total === 'number' ? shown < total : raw.length >= PAGE_SIZE));
+    } catch {
+      showToast('Could not load more results', 'err');
+    } finally {
+      setLoadingMore(false);
+    }
+  };
 
   const renderCard = (p: Product) => (
     <View key={p.id} style={styles.gridItem}>
@@ -118,7 +183,10 @@ export default function SearchScreen() {
         quantity={cart.quantityOf(p.id)}
         wished={wishlist.isWished(p.id)}
         addVariant="compact"
-        onPress={() => navigation.navigate('ProductDetail', { productId: p.id })}
+        onPress={() => {
+          if (term) rememberSearch(term);
+          navigation.navigate('ProductDetail', { productId: p.id });
+        }}
         onToggleWish={() => wishlist.toggleWish(p.id)}
         onAdd={() =>
           cart.addToCart({
@@ -148,14 +216,52 @@ export default function SearchScreen() {
     >
       {heading}
       <View style={styles.grid}>{list.map(renderCard)}</View>
+      {term && hasMore && list === results ? (
+        <View style={styles.loadMore}>
+          <PrimaryButton
+            label={loadingMore ? 'Loading…' : 'Load more'}
+            kind="ghost"
+            onPress={loadMore}
+            loading={loadingMore}
+            disabled={loadingMore}
+            testID="search-load-more"
+          />
+        </View>
+      ) : null}
     </ScrollView>
   );
+
+  const recentBlock =
+    recent.length > 0 ? (
+      <View style={styles.recentWrap}>
+        <View style={styles.recentHead}>
+          <Text style={styles.browseHeading}>RECENT SEARCHES</Text>
+          <Text style={styles.recentClear} onPress={clearRecent} accessibilityRole="button">
+            Clear
+          </Text>
+        </View>
+        <View style={styles.recentChips}>
+          {recent.map(r => (
+            <Pressable key={r} style={styles.recentChip} onPress={() => setQuery(r)} accessibilityRole="button">
+              <Icon name="clock" size={13} color={colors.textMuted} />
+              <Text style={styles.recentChipText} numberOfLines={1}>{r}</Text>
+            </Pressable>
+          ))}
+        </View>
+      </View>
+    ) : null;
 
   const body = () => {
     if (!term) {
       if (browseLoading) return <SkeletonGrid count={6} />;
       if (browse && browse.length > 0) {
-        return grid(<Text style={styles.browseHeading}>BROWSE ALL PRODUCTS</Text>, browse);
+        return grid(
+          <>
+            {recentBlock}
+            <Text style={styles.browseHeading}>BROWSE ALL PRODUCTS</Text>
+          </>,
+          browse,
+        );
       }
       return (
         <StateView
@@ -163,6 +269,19 @@ export default function SearchScreen() {
           title="Nothing to browse yet"
           message="Search for a product by name to get started."
           icon="search"
+        />
+      );
+    }
+
+    if (searchError) {
+      return (
+        <StateView
+          kind="error"
+          title="Couldn't search right now"
+          message="Check your connection and try again."
+          ctaLabel="Retry"
+          onCta={() => setRetryKey(k => k + 1)}
+          icon="alert"
         />
       );
     }
@@ -202,7 +321,10 @@ export default function SearchScreen() {
           placeholder="Search for products"
           value={query}
           onChangeText={setQuery}
-          onSubmit={Keyboard.dismiss}
+          onSubmit={() => {
+            rememberSearch(query);
+            Keyboard.dismiss();
+          }}
           left={
             <Pressable onPress={() => navigation.goBack()} hitSlop={8}>
               <Icon name="chevronLeft" size={22} color={colors.text} />
@@ -242,4 +364,22 @@ const styles = StyleSheet.create({
   },
   grid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', rowGap: 12 },
   gridItem: { width: '48%', minWidth: 0 },
+  loadMore: { marginTop: 16 },
+  recentWrap: { marginBottom: 16 },
+  recentHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline' },
+  recentClear: { fontFamily: fontFamily.bold, fontSize: 12.5, color: colors.primary },
+  recentChips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  recentChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    maxWidth: '100%',
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.white,
+  },
+  recentChipText: { fontFamily: fontFamily.semibold, fontSize: 12.5, color: colors.text, flexShrink: 1 },
 });

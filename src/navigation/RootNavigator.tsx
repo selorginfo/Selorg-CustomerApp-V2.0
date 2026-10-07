@@ -1,8 +1,9 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import MainTabNavigator from './MainTabNavigator';
 import { navigationRef, consumePendingNavigation } from '../utils/navigationRef';
+import { isOnline, subscribeConnectivity } from '../utils/connectivity';
 import type { RootStackParamList } from './types';
 
 import SplashScreen from '../screens/Splash';
@@ -52,13 +53,48 @@ import NoInternetScreen from '../screens/common/NoInternet';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
+const currentRouteName = () =>
+  navigationRef.isReady() ? (navigationRef.getCurrentRoute()?.name as string | undefined) : undefined;
+
+/** Show the No Internet screen over whatever is open (never over Splash). */
+function showNoInternet() {
+  const name = currentRouteName();
+  if (!name || name === 'NoInternet' || name === 'Splash') return;
+  navigationRef.navigate('NoInternet' as never);
+}
+
 export default function RootNavigator() {
+  const prevRoute = useRef<string | undefined>(undefined);
+
   useEffect(() => {
     setTimeout(() => consumePendingNavigation(), 300);
   }, []);
 
+  // Offline → No Internet screen; back online → return to where the user was.
+  useEffect(
+    () =>
+      subscribeConnectivity(online => {
+        if (!online) {
+          showNoInternet();
+          return;
+        }
+        if (currentRouteName() === 'NoInternet' && navigationRef.canGoBack()) navigationRef.goBack();
+      }),
+    [],
+  );
+
   return (
-    <NavigationContainer ref={navigationRef} onReady={() => consumePendingNavigation()}>
+    <NavigationContainer
+      ref={navigationRef}
+      onReady={() => consumePendingNavigation()}
+      onStateChange={() => {
+        const name = currentRouteName();
+        // Launched offline: the drop was detected during Splash, so surface it
+        // as soon as Splash hands over.
+        if (prevRoute.current === 'Splash' && name !== 'Splash' && !isOnline()) showNoInternet();
+        prevRoute.current = name;
+      }}
+    >
       <Stack.Navigator
         screenOptions={{ headerShown: false, contentStyle: { backgroundColor: '#FFFFFF' } }}
         initialRouteName="Splash"

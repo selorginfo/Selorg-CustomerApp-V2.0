@@ -29,7 +29,11 @@ function Row({ label, value, bold, valueColor }: RowProps) {
  * every screen that renders it always shows the exact same numbers.
  */
 export default function BillSummaryCard() {
-  const { itemTotal, discount, deliveryFee, handlingCharge, tip, grandTotal } = useCart();
+  const { itemTotal, discount, deliveryFee, handlingCharge, tax, tip, grandTotal } = useCart();
+  // GST is part of "To pay"; show it so the rows add up. When the pricing
+  // engine folds it into the total without reporting it, show the difference.
+  const rowsBeforeTax = Math.max(0, itemTotal - discount) + deliveryFee + handlingCharge + tip;
+  const taxShown = tax > 0 ? tax : Math.max(0, Math.round((grandTotal - rowsBeforeTax) * 100) / 100);
 
   return (
     <View style={styles.card}>
@@ -46,6 +50,7 @@ export default function BillSummaryCard() {
       {handlingCharge > 0 ? (
         <Row label="Handling charge" value={formatCurrency(handlingCharge)} />
       ) : null}
+      {taxShown > 0 ? <Row label="GST & taxes" value={formatCurrency(taxShown)} /> : null}
       {tip > 0 ? <Row label="Delivery tip" value={formatCurrency(tip)} /> : null}
       <View style={styles.totalWrap}>
         <Row label="To pay" value={formatCurrency(grandTotal)} bold />

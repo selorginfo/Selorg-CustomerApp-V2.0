@@ -67,8 +67,15 @@ export default function OrderDetail() {
   const delivered = order.status === 'delivered';
 
   const handleNeedHelp = async () => {
-    const ticket = await newTicket();
-    navigation.navigate('TicketDetail', { ticketId: ticket.id });
+    try {
+      const ticket = await newTicket(
+        `Help with order #${order.orderNumber}`,
+        `I need help with order #${order.orderNumber}.`,
+      );
+      navigation.navigate('TicketDetail', { ticketId: ticket.id });
+    } catch {
+      // newTicket shows the error
+    }
   };
 
   // Plain computation, not useMemo: this runs after an early return above,

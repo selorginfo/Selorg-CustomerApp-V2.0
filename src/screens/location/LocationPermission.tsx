@@ -7,6 +7,7 @@ import { Icon, PrimaryButton, ScreenContainer } from '../../components';
 import { colors, fontFamily, radii, spacing } from '../../theme';
 import { showToast } from '../../utils/toast';
 import { useAddress } from '../../context/AddressContext';
+import { useAuth } from '../../context/AuthContext';
 import { presentLocationFailure, resolveCurrentPlace } from '../../services/location.service';
 import { storeApi } from '../../services/store.service';
 import { mmkvStorage } from '../../lib/storage';
@@ -108,22 +109,41 @@ function LocationPulse({ active }: { active: boolean }) {
 export default function LocationPermissionScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { saveAddress } = useAddress();
+  const { completeLocationStep } = useAuth();
   const [locating, setLocating] = useState(false);
+  const [notServiceable, setNotServiceable] = useState<string | null>(null);
 
   const enterApp = () => {
+    completeLocationStep();
     navigation.reset({ index: 0, routes: [{ name: 'Main' }] });
   };
 
   const onUseCurrentLocation = async () => {
     if (locating) return;
     setLocating(true);
+    setNotServiceable(null);
     try {
       const place = await resolveCurrentPlace();
       const hasFullAddress =
         !!place.line1.trim() && !!place.city.trim() && !!place.pincode.trim();
 
+      // Serviceability first: an address we can't deliver to must not be saved
+      // or let the user into the app as if it were set.
+      const assignment = await storeApi.assign(place.latitude, place.longitude);
+      if (assignment.serviceable === false) {
+        setNotServiceable(
+          assignment.message || "We don't deliver to your current location yet.",
+        );
+        return;
+      }
+      if (assignment.store?._id) {
+        mmkvStorage.setItem('assignedStoreId', assignment.store._id);
+      }
+
+      let saved = false;
       if (hasFullAddress) {
-        await saveAddress({
+        // saveAddress shows its own error toast when it fails.
+        saved = await saveAddress({
           id: null,
           label: 'Home',
           line1: place.line1,
@@ -135,17 +155,13 @@ export default function LocationPermissionScreen() {
           latitude: place.latitude,
           longitude: place.longitude,
         });
+        if (!saved) return;
       }
 
-      const assignment = await storeApi.assign(place.latitude, place.longitude);
-      if (assignment.store?._id) {
-        mmkvStorage.setItem('assignedStoreId', assignment.store._id);
-      }
-      if (assignment.serviceable === false) {
-        showToast(assignment.message || 'No serviceable store near your location', 'err');
-      } else {
-        showToast(hasFullAddress ? 'Location set · nearest store assigned' : 'Location detected · add address details anytime', 'ok');
-      }
+      showToast(
+        saved ? 'Location set · nearest store assigned' : 'Location detected · add address details anytime',
+        'ok',
+      );
       enterApp();
     } catch (e: unknown) {
       presentLocationFailure(e);
@@ -162,6 +178,11 @@ export default function LocationPermissionScreen() {
         <Text style={styles.sub}>
           Share your location so we can bind you to the nearest darkstore for the fastest delivery.
         </Text>
+        {notServiceable ? (
+          <Text style={styles.notServiceable} testID="location-not-serviceable">
+            {notServiceable} Try a different address.
+          </Text>
+        ) : null}
       </View>
 
       <View style={styles.footer}>
@@ -176,11 +197,12 @@ export default function LocationPermissionScreen() {
         <PrimaryButton
           testID="location-manual"
           label="Enter address manually"
-          onPress={() =>
+          onPress={() => {
             // Design enters the app and opens the address form on top of it, so
             // Back lands on Home rather than bouncing to the permission screen.
-            navigation.reset({ index: 1, routes: [{ name: 'Main' }, { name: 'AddAddress' }] })
-          }
+            completeLocationStep();
+            navigation.reset({ index: 1, routes: [{ name: 'Main' }, { name: 'AddAddress' }] });
+          }}
           kind="ghost"
         />
         <Text style={styles.skipText} onPress={enterApp} testID="location-skip" accessibilityRole="button">
@@ -229,6 +251,14 @@ const styles = StyleSheet.create({
     lineHeight: 21,
     textAlign: 'center',
     maxWidth: 260,
+  },
+  notServiceable: {
+    fontFamily: fontFamily.bold,
+    fontSize: 13,
+    color: colors.danger,
+    textAlign: 'center',
+    maxWidth: 280,
+    marginTop: spacing.sm,
   },
   footer: { paddingHorizontal: spacing.lg, paddingBottom: spacing.lg, alignItems: 'center' },
   skipText: {

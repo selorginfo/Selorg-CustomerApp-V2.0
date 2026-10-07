@@ -5,20 +5,18 @@ import { API_ORIGIN } from '../config/api';
  * WebView, localhost is the phone, and Paynimo's card "Next" navigates there
  * before the card form. Point the callback at the host this device can reach.
  */
+// React Native's URL polyfill doesn't implement hostname/protocol/port, so parse origins by hand.
+const ORIGIN_RE = /^(https?:\/\/)([^/?#:]+)(:\d+)?/i;
+
 function returnUrlForDevice(returnUrl: unknown): string {
   const raw = String(returnUrl || '');
-  try {
-    const url = new URL(raw);
-    const host = url.hostname.toLowerCase();
-    if (host !== 'localhost' && host !== '127.0.0.1' && host !== '0.0.0.0') return raw;
-    const origin = new URL(API_ORIGIN);
-    url.protocol = origin.protocol;
-    url.hostname = origin.hostname;
-    url.port = origin.port;
-    return url.toString();
-  } catch {
-    return raw;
-  }
+  const match = raw.match(ORIGIN_RE);
+  if (!match) return raw;
+  const host = match[2].toLowerCase();
+  if (host !== 'localhost' && host !== '127.0.0.1' && host !== '0.0.0.0') return raw;
+  const deviceOrigin = String(API_ORIGIN).match(ORIGIN_RE);
+  if (!deviceOrigin) return raw;
+  return `${deviceOrigin[0]}${raw.slice(match[0].length)}`;
 }
 
 /**

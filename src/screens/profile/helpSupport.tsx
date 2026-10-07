@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import LoadMoreFooter from '../../components/LoadMoreFooter';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Header, Icon, ScreenContainer, StateView } from '../../components';
 import { colors, fontFamily, radii, spacing } from '../../theme';
@@ -20,18 +21,39 @@ const FAQS = [
 
 export default function HelpSupportScreen() {
   const navigation = useNavigation<Nav>();
-  const { tickets, newTicket } = useSupport();
+  const { tickets, newTicket, refresh, hasMore, loadingMore, loadMore } = useSupport();
 
-  const onNewConversation = async () => {
-    const t = await newTicket();
-    navigation.navigate('TicketDetail', { ticketId: t.id });
+  // Re-fetch every time the screen is shown so status changes made elsewhere
+  // (admin, rider, another device) appear without restarting the app.
+  useFocusEffect(
+    React.useCallback(() => {
+      refresh();
+    }, [refresh]),
+  );
+
+  const [starting, setStarting] = useState(false);
+
+  // FAQ rows open a ticket about that topic instead of a generic one.
+  const startConversation = async (subject?: string, description?: string) => {
+    if (starting) return;
+    setStarting(true);
+    try {
+      const t = await newTicket(subject, description);
+      navigation.navigate('TicketDetail', { ticketId: t.id });
+    } catch {
+      // newTicket shows the error
+    } finally {
+      setStarting(false);
+    }
   };
+
+  const onNewConversation = () => startConversation();
 
   return (
     <ScreenContainer>
       <Header title="Help & support" onBack={() => navigation.goBack()} />
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        <Pressable onPress={onNewConversation} style={styles.ctaCard}>
+        <Pressable onPress={onNewConversation} disabled={starting} style={[styles.ctaCard, starting && styles.ctaBusy]}>
           <View style={styles.ctaIconTile}>
             <Icon name="chat" size={24} color={colors.white} />
           </View>
@@ -47,7 +69,8 @@ export default function HelpSupportScreen() {
           {FAQS.map((f, i) => (
             <Pressable
               key={f}
-              onPress={onNewConversation}
+              onPress={() => startConversation(f, `I need help with: ${f}`)}
+              disabled={starting}
               style={[styles.faqRow, i === FAQS.length - 1 && styles.faqRowLast]}
             >
               <Text style={styles.faqLabel}>{f}</Text>
@@ -92,6 +115,7 @@ export default function HelpSupportScreen() {
             );
           })
         )}
+        <LoadMoreFooter hasMore={hasMore} loading={loadingMore} onPress={loadMore} />
       </ScrollView>
     </ScreenContainer>
   );
@@ -119,6 +143,7 @@ const styles = StyleSheet.create({
   faqRowLast: { borderBottomWidth: 0 },
   faqLabel: { flex: 1, minWidth: 0, fontFamily: fontFamily.bold, fontSize: 13.5, color: colors.text },
   content: { padding: spacing.md, paddingBottom: spacing.xl },
+  ctaBusy: { opacity: 0.7 },
   ctaCard: {
     flexDirection: 'row',
     alignItems: 'center',

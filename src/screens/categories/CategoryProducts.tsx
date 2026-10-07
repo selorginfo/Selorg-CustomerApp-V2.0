@@ -1,4 +1,8 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import LoadMoreFooter from '../../components/LoadMoreFooter';
+import { usePager } from '../../utils/usePager';
+
+const CATEGORY_PAGE = 40;
 import { Image, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -65,11 +69,28 @@ export default function CategoryProductsScreen() {
   const [loadingCat, setLoadingCat] = useState(true);
   const [loadingProducts, setLoadingProducts] = useState(true);
   const [loadError, setLoadError] = useState(false);
+  // Bumped by "Retry" to re-run the product fetch (re-setting the same tab was a no-op).
+  const [reloadKey, setReloadKey] = useState(0);
 
   const [activeSub, setActiveSub] = useState<string>(initialSub || 'all');
   const [filters, setFilters] = useState<ProductFilters>(DEFAULT_FILTERS);
   const [filterOpen, setFilterOpen] = useState(false);
   const [sortOpen, setSortOpen] = useState(false);
+
+  const fetchPage = useCallback(
+    async (page: number) => {
+      const res = await catalogApi.getCategoryProducts(categoryId, {
+        page,
+        limit: CATEGORY_PAGE,
+        subcategory: activeSub === 'all' ? undefined : activeSub,
+      });
+      const raw = res?.products || (res as any) || [];
+      return Array.isArray(raw) ? raw.map(toProductCard) : [];
+    },
+    [categoryId, activeSub],
+  );
+  const pager = usePager(fetchPage, CATEGORY_PAGE, setAllProducts);
+  const { firstPageLoaded } = pager;
 
   useEffect(() => {
     setLoadingCat(true);
@@ -89,18 +110,30 @@ export default function CategoryProductsScreen() {
   useEffect(() => {
     setLoadingProducts(true);
     setLoadError(false);
-    catalogApi
-      .getCategoryProducts(categoryId, {
-        limit: 80,
-        subcategory: activeSub === 'all' ? undefined : activeSub,
+    let alive = true;
+    fetchPage(1)
+      .then(list => {
+        if (!alive) return;
+        setAllProducts(list);
+        firstPageLoaded(list.length);
       })
-      .then(res => {
-        const raw = res?.products || (res as any) || [];
-        setAllProducts(Array.isArray(raw) ? raw.map(toProductCard) : []);
-      })
-      .catch(() => { setAllProducts([]); setLoadError(true); })
-      .finally(() => setLoadingProducts(false));
-  }, [categoryId, activeSub]);
+      .catch(() => { if (alive) { setAllProducts([]); setLoadError(true); } })
+      .finally(() => alive && setLoadingProducts(false));
+    return () => {
+      alive = false;
+    };
+  }, [fetchPage, firstPageLoaded, reloadKey]);
+
+  // A sub-category given by name (older links, name-only catalogs) is mapped
+  // to its slug once the children load, so the server filter matches.
+  useEffect(() => {
+    if (!category?.children?.length || activeSub === 'all') return;
+    if (category.children.some(c => (c.slug || c._id) === activeSub)) return;
+    const byName = category.children.find(
+      c => c.name?.trim().toLowerCase() === activeSub.trim().toLowerCase(),
+    );
+    if (byName) setActiveSub(byName.slug || byName._id);
+  }, [category, activeSub]);
 
   const subs = useMemo(() => {
     if (!category) return [] as { slug: string; name: string }[];
@@ -169,7 +202,7 @@ export default function CategoryProductsScreen() {
           title="Couldn't load products"
           message="Check your connection and try again."
           ctaLabel="Retry"
-          onCta={() => setActiveSub(s => s)}
+          onCta={() => setReloadKey(k => k + 1)}
           icon="wifiOff"
         />
       );
@@ -219,6 +252,9 @@ export default function CategoryProductsScreen() {
             />
           </View>
         ))}
+        <View style={styles.loadMoreWrap}>
+          <LoadMoreFooter hasMore={pager.hasMore} loading={pager.loadingMore} onPress={pager.loadMore} />
+        </View>
       </ScrollView>
     );
   };
@@ -315,7 +351,8 @@ export default function CategoryProductsScreen() {
         onClose={() => setFilterOpen(false)}
         filters={filters}
         onChange={setFilters}
-        onReset={() => setFilters(DEFAULT_FILTERS)}
+        // Clear All resets filters only; the chosen sort order is kept.
+        onReset={() => setFilters(f => ({ ...DEFAULT_FILTERS, sort: f.sort }))}
         resultCount={list.length}
       />
       <SortSheet
@@ -329,6 +366,7 @@ export default function CategoryProductsScreen() {
 }
 
 const styles = StyleSheet.create({
+  loadMoreWrap: { width: '100%' },
   headerRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 14, paddingTop: 8, paddingBottom: 10 },
   backBtn: {
     width: 36,

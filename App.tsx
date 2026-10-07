@@ -16,7 +16,8 @@ import {
   registerPushTokenIfAvailable,
   setForegroundMessageHandler,
 } from './src/services/pushNotifications';
-import { navigate, setPendingNavigation } from './src/utils/navigationRef';
+import { setPendingNavigation } from './src/utils/navigationRef';
+import { notificationTarget, openNotificationTarget } from './src/utils/notificationRoute';
 import InAppNotificationBanner, {
   NotificationPayload,
 } from './src/components/InAppNotificationBanner';
@@ -100,10 +101,9 @@ function AppContent() {
   const [banner, setBanner] = useState<NotificationPayload | null>(null);
 
   // Navigate to ProductDetail from a notification data payload
+  // Orders, refunds, tickets, wallet and products — not just Product Detail.
   const handleNotificationNavigation = (data?: Record<string, string>) => {
-    if (data?.productId) {
-      navigate('ProductDetail', { productId: data.productId });
-    }
+    openNotificationTarget(data);
   };
 
   useEffect(() => {
@@ -208,7 +208,7 @@ function AppContent() {
       const unsubBackground = messaging().onNotificationOpenedApp(
         (remoteMessage: any) => {
           const data = remoteMessage?.data as Record<string, string> | undefined;
-          if (data?.productId) {
+          if (data) {
             // Small delay to ensure navigation is mounted
             setTimeout(() => handleNotificationNavigation(data), 300);
           }
@@ -221,11 +221,8 @@ function AppContent() {
       messaging()
         .getInitialNotification()
         .then((remoteMessage: any) => {
-          if (remoteMessage?.data?.productId) {
-            setPendingNavigation('ProductDetail', {
-              productId: remoteMessage.data.productId,
-            });
-          }
+          const target = notificationTarget(remoteMessage?.data);
+          if (target) setPendingNavigation(target.screen, target.params);
         })
         .catch(() => {});
 

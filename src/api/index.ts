@@ -20,6 +20,7 @@ import { Storage } from './storage';
 import configs from './configs';
 import { normalizeApiAssetUrl } from '../config/api';
 import { normalizeApiError } from '../utils/apiError';
+import { isNetworkFailure, reportNetworkFailure, reportNetworkSuccess } from '../utils/connectivity';
 
 // Registered by App.tsx after the store is ready — avoids a circular import.
 let _onUnauthorized: (() => void) | null = null;
@@ -178,6 +179,8 @@ const performFetch = async (finalUrl: string, options: any, requestId: number) =
   try {
     const response = await fetch(finalUrl, init);
     clearTimeout(timeoutId);
+    // Any HTTP response means we're online (drives the No Internet screen).
+    reportNetworkSuccess();
 
     const contentType = response.headers.get('content-type') || '';
     const isJson = /[/+]json/i.test(contentType);
@@ -214,6 +217,7 @@ const performFetch = async (finalUrl: string, options: any, requestId: number) =
   } catch (err: any) {
     clearTimeout(timeoutId);
     if (err?.__apiError) return Promise.reject(err); // already normalized (HTTP error)
+    if (isNetworkFailure(err)) reportNetworkFailure();
     throw err; // network error — bubble up so sendRequest can try a fallback host
   }
 };

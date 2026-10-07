@@ -36,6 +36,12 @@ export function resolveListingStock(raw: {
   return best > 0 ? best : null;
 }
 
+/** Per-order quantity cap, or null when the product has none. */
+export function resolveMaxOrderLimit(raw: { maxOrderLimit?: number | null }): number | null {
+  const n = raw.maxOrderLimit;
+  return typeof n === 'number' && Number.isFinite(n) && n > 0 ? Math.floor(n) : null;
+}
+
 /** Normalize product id fields (`id` vs `_id`) from selorg-service. */
 export function normalizeProduct(raw: Record<string, unknown>): ApiProduct {
   const id = String(raw._id ?? raw.id ?? '');

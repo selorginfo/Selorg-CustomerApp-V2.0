@@ -11,11 +11,20 @@ import { mmkvStorage } from '../../lib/storage';
 
 export default function SplashScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
-  const { isLoading, isAuthenticated, isGuest } = useAuth();
+  const { isLoading, isAuthenticated, isGuest, onboardingStep } = useAuth();
 
   useEffect(() => {
     if (isLoading) return;
     const timer = setTimeout(() => {
+      // Signed in but signup was interrupted — resume where it stopped.
+      if (onboardingStep === 'profile') {
+        navigation.replace('ProfileSetup');
+        return;
+      }
+      if (onboardingStep === 'location' && isAuthenticated) {
+        navigation.replace('LocationPermission');
+        return;
+      }
       if (isAuthenticated) {
         navigation.replace('Main');
         return;
@@ -33,7 +42,7 @@ export default function SplashScreen() {
       }
     }, 1200);
     return () => clearTimeout(timer);
-  }, [isLoading, isAuthenticated, isGuest, navigation]);
+  }, [isLoading, isAuthenticated, isGuest, onboardingStep, navigation]);
 
   return (
     <View style={styles.container}>

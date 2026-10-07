@@ -16,6 +16,9 @@ export interface CouponValidationResult {
   valid: boolean;
   coupon_code?: string;
   discount_amount?: number;
+  coupon_type?: string;
+  is_cashback?: boolean;
+  error_code?: string;
   message?: string;
   error?: string;
 }

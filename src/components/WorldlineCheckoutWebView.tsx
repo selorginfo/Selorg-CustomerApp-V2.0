@@ -1,6 +1,7 @@
 import React, { useCallback, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Linking,
   Modal,
   Pressable,
   StyleSheet,
@@ -100,7 +101,7 @@ export default function WorldlineCheckoutWebView({
         <View style={styles.spacer} />
       </View>
       {loading ? (
-        <View style={styles.loader}>
+        <View style={styles.loader} pointerEvents="none">
           <ActivityIndicator size="large" color={colors.primary} />
         </View>
       ) : null}
@@ -108,8 +109,15 @@ export default function WorldlineCheckoutWebView({
         source={source}
         onLoadStart={() => setLoading(true)}
         onLoadEnd={() => setLoading(false)}
+        onError={() => setLoading(false)}
+        onHttpError={() => setLoading(false)}
         onNavigationStateChange={onNavigationStateChange}
         onShouldStartLoadWithRequest={req => {
+          // UPI intents (upi://, phonepe://, tez://, intent://…) must open the payment app, not load in the WebView.
+          if (!/^(https?|about|data|blob|javascript):/i.test(req.url)) {
+            Linking.openURL(req.url).catch(() => setLoading(false));
+            return false;
+          }
           if (isWorldlineReturnUrl(req.url)) {
             const parsed = parseReturnUrl(req.url);
             const hasResult =

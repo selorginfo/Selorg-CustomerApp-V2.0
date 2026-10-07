@@ -2,7 +2,8 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { Header, Icon, ProductCard, ScreenContainer, StateView, SkeletonGrid } from '../../components';
+import { Header, Icon, PrimaryButton, ProductCard, ScreenContainer, StateView, SkeletonGrid } from '../../components';
+import { showToast } from '../../utils/toast';
 import { colors, fontFamily, radii } from '../../theme';
 import { catalogApi } from '../../services/catalog.service';
 import type { ApiProduct } from '../../services/catalog.service';
@@ -20,6 +21,26 @@ import {
 } from './SortFilterSheet';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
+
+const PAGE_SIZE = 40;
+
+/**
+ * Home section keys (`best_sellers`, `collections_summer_fruits`) go through the
+ * sections API, which also falls back to the matching collection; plain
+ * collection slugs (`summer-fruits`) go straight to /collections.
+ */
+async function fetchCollectionPage(
+  key: string,
+  page: number,
+): Promise<{ title?: string; products: ApiProduct[]; total?: number }> {
+  if (!key.includes('-')) {
+    const section = await catalogApi.getSectionProducts(key, { page, limit: PAGE_SIZE });
+    if (section) return { title: section.title, products: section.products };
+  }
+  const col = await catalogApi.getCollection(sectionKeyToCollectionSlug(key), { page, limit: PAGE_SIZE });
+  const total = (col.pagination as { total?: number } | undefined)?.total;
+  return { title: col.title || col.name, products: col.products || [], total };
+}
 
 function toProductCard(p: ApiProduct) {
   const price = Number(p.price ?? 0);
@@ -51,26 +72,65 @@ export default function CollectionScreen() {
   const cart = useCart();
   const wishlist = useWishlist();
 
-  const slug = collectionKey.includes('-') ? collectionKey : sectionKeyToCollectionSlug(collectionKey);
-
   const [rawProducts, setRawProducts] = useState<ReturnType<typeof toProductCard>[]>([]);
   const [title, setTitle] = useState(routeTitle || 'Products');
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [filters, setFilters] = useState<ProductFilters>(DEFAULT_FILTERS);
   const [filterOpen, setFilterOpen] = useState(false);
   const [sortOpen, setSortOpen] = useState(false);
 
   useEffect(() => {
+    let alive = true;
     setLoading(true);
-    catalogApi
-      .getCollection(slug, { limit: 40 })
-      .then(col => {
-        setTitle(routeTitle || col.title || col.name || 'Products');
-        setRawProducts((col.products || []).map(toProductCard));
+    setLoadError(false);
+    fetchCollectionPage(collectionKey, 1)
+      .then(res => {
+        if (!alive) return;
+        setTitle(routeTitle || res.title || 'Products');
+        setRawProducts(res.products.map(toProductCard));
+        setPage(1);
+        setHasMore(
+          typeof res.total === 'number' ? res.products.length < res.total : res.products.length >= PAGE_SIZE,
+        );
       })
-      .catch(() => setRawProducts([]))
-      .finally(() => setLoading(false));
-  }, [slug, routeTitle]);
+      .catch(() => {
+        // A failed load is an error with Retry, not an empty collection.
+        if (!alive) return;
+        setRawProducts([]);
+        setLoadError(true);
+      })
+      .finally(() => alive && setLoading(false));
+    return () => {
+      alive = false;
+    };
+  }, [collectionKey, routeTitle, reloadKey]);
+
+  const loadMore = async () => {
+    if (loadingMore || !hasMore) return;
+    setLoadingMore(true);
+    try {
+      const next = page + 1;
+      const res = await fetchCollectionPage(collectionKey, next);
+      const seen = new Set(rawProducts.map(p => p.id));
+      const fresh = res.products.map(toProductCard).filter(p => !seen.has(p.id));
+      const combined = [...rawProducts, ...fresh];
+      setRawProducts(combined);
+      setPage(next);
+      setHasMore(
+        fresh.length > 0 &&
+          (typeof res.total === 'number' ? combined.length < res.total : res.products.length >= PAGE_SIZE),
+      );
+    } catch {
+      showToast('Could not load more products', 'err');
+    } finally {
+      setLoadingMore(false);
+    }
+  };
 
   const list = useMemo(() => applyProductFilters(rawProducts, filters), [rawProducts, filters]);
   const activeCount = countActiveFilters(filters);
@@ -107,6 +167,15 @@ export default function CollectionScreen() {
 
       {loading ? (
         <SkeletonGrid count={6} />
+      ) : loadError ? (
+        <StateView
+          kind="error"
+          title="Couldn't load products"
+          message="Check your connection and try again."
+          ctaLabel="Retry"
+          onCta={() => setReloadKey(k => k + 1)}
+          icon="alert"
+        />
       ) : list.length === 0 ? (
         <StateView
           kind="empty"
@@ -126,12 +195,23 @@ export default function CollectionScreen() {
                 wished={wishlist.isWished(p.id)}
                 onPress={() => navigation.navigate('ProductDetail', { productId: p.id })}
                 onToggleWish={() => wishlist.toggleWish(p.id)}
-                onAdd={() => cart.addToCart({ id: p.id, name: p.name, unit: p.unit, price: p.price, mrp: p.mrp, stockQuantity: p.stockQuantity, image: p.image })}
-                onIncrement={() => cart.incrementItem(p.id)}
+                onAdd={() => cart.addToCart({ id: p.id, name: p.name, unit: p.unit, price: p.price, mrp: p.mrp, stockQuantity: p.stockQuantity, maxOrderLimit: p.maxOrderLimit, image: p.image })}
+                onIncrement={() => cart.incrementItem(p.id, undefined, p.maxOrderLimit)}
                 onDecrement={() => cart.decrementItem(p.id)}
               />
             </View>
           ))}
+          {hasMore ? (
+            <View style={styles.loadMore}>
+              <PrimaryButton
+                label={loadingMore ? 'Loading…' : 'Load more'}
+                kind="ghost"
+                onPress={loadMore}
+                loading={loadingMore}
+                disabled={loadingMore}
+              />
+            </View>
+          ) : null}
         </ScrollView>
       )}
 
@@ -140,7 +220,8 @@ export default function CollectionScreen() {
         onClose={() => setFilterOpen(false)}
         filters={filters}
         onChange={setFilters}
-        onReset={() => setFilters(DEFAULT_FILTERS)}
+        // Clear All resets filters only; the chosen sort order is kept.
+        onReset={() => setFilters(f => ({ ...DEFAULT_FILTERS, sort: f.sort }))}
         resultCount={list.length}
       />
       <SortSheet
@@ -154,6 +235,7 @@ export default function CollectionScreen() {
 }
 
 const styles = StyleSheet.create({
+  loadMore: { width: '100%', marginTop: 4 },
   sortRow: {
     flexDirection: 'row', gap: 10, paddingHorizontal: 16, paddingVertical: 10,
     borderBottomWidth: 1, borderBottomColor: colors.border,

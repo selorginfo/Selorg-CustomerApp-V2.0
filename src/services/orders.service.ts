@@ -60,6 +60,7 @@ export interface OrderTracking {
     phone?: string | null;
     photoUri?: string | null;
     vehicleType?: string | null;
+    vehicleNumber?: string | null;
     rating?: number | null;
   };
   riderLocation?: {

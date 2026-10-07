@@ -78,7 +78,8 @@ export default function AccountScreen() {
     { icon: 'chat', label: 'Support', onPress: () => goGated('Support') },
     { icon: 'edit', label: 'Edit profile', onPress: () => goGated('EditProfile') },
     { icon: 'settings', label: 'Settings', onPress: () => goGated('Settings') },
-    { icon: 'file', label: 'Terms & privacy', onPress: () => navigation.navigate('Legal', { type: 'terms' }) },
+    { icon: 'file', label: 'Terms of service', onPress: () => navigation.navigate('Legal', { type: 'terms' }) },
+    { icon: 'shield', label: 'Privacy policy', onPress: () => navigation.navigate('Legal', { type: 'privacy' }) },
   ];
 
   // Three quick-stat tiles from the design's account screen.

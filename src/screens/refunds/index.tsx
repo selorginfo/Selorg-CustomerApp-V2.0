@@ -1,6 +1,7 @@
 import React from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import LoadMoreFooter from '../../components/LoadMoreFooter';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { colors, fontFamily, radii, shadows } from '../../theme';
 import { ScreenContainer, Header, StateView } from '../../components';
@@ -20,7 +21,15 @@ const FALLBACK_META = REFUND_STATUS_META.pending;
 
 export default function Refunds() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
-  const { refunds } = useRefunds();
+  const { refunds, refresh, hasMore, loadingMore, loadMore } = useRefunds();
+
+  // Re-fetch every time the screen is shown so status changes made elsewhere
+  // (admin, rider, another device) appear without restarting the app.
+  useFocusEffect(
+    React.useCallback(() => {
+      refresh();
+    }, [refresh]),
+  );
 
   if (refunds.length === 0) {
     return (
@@ -62,6 +71,7 @@ export default function Refunds() {
             </Pressable>
           );
         })}
+        <LoadMoreFooter hasMore={hasMore} loading={loadingMore} onPress={loadMore} />
       </ScrollView>
     </ScreenContainer>
   );

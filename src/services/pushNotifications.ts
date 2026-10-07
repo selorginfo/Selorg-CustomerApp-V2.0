@@ -1,5 +1,8 @@
 import { Platform } from 'react-native';
 import { pushApi } from './push.service';
+import { mmkvStorage } from '../lib/storage';
+
+const FCM_TOKEN_KEY = 'fcmToken';
 
 export type PushPlatform = 'ios' | 'android';
 
@@ -52,11 +55,13 @@ export async function registerPushTokenIfAvailable(): Promise<void> {
     const platform: PushPlatform = Platform.OS === 'ios' ? 'ios' : 'android';
     try {
       await pushApi.registerToken(token, platform);
+      mmkvStorage.setItem(FCM_TOKEN_KEY, token);
       if (__DEV__)
         console.log('[Push] Token registered successfully with backend');
       messaging().onTokenRefresh(async (newToken: string) => {
         try {
           await pushApi.registerToken(newToken, platform);
+          mmkvStorage.setItem(FCM_TOKEN_KEY, newToken);
         } catch (e) {
           if (__DEV__)
             console.warn('[Push] Token refresh registration failed:', (e as any)?.message || e);
@@ -76,6 +81,27 @@ export async function registerPushTokenIfAvailable(): Promise<void> {
         (err as Error)?.message || err,
       );
     }
+  }
+}
+
+/**
+ * Stop pushes reaching this device for the account that is signing out:
+ * unregister the token server-side, then rotate it locally so a stale copy
+ * can't be reused. Call with the access token *before* it is cleared.
+ */
+export function unregisterPushToken(accessToken: string | null): void {
+  const token = mmkvStorage.getItem(FCM_TOKEN_KEY);
+  mmkvStorage.removeItem(FCM_TOKEN_KEY);
+  if (token && accessToken) {
+    pushApi.removeToken(token, accessToken).catch(() => {});
+  }
+  try {
+    const messaging = require('@react-native-firebase/messaging').default;
+    messaging()
+      .deleteToken()
+      .catch(() => {});
+  } catch {
+    // Firebase not configured
   }
 }
 

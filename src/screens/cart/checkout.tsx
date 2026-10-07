@@ -24,6 +24,7 @@ import { useWallet } from '../../context/WalletContext';
 import type { PayMethod } from '../../context/OrdersContext';
 import { deliveryApi, type DeliveryEstimate } from '../../services/delivery.service';
 import { mmkvStorage } from '../../lib/storage';
+import { storeApi } from '../../services/store.service';
 import type { RootStackParamList } from '../../navigation/types';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -127,6 +128,7 @@ export default function CheckoutScreen() {
   const [receiverPhone, setReceiverPhone] = useState('');
   const [payMethod, setPayMethod] = useState<PayMethod>('online');
   const [couponInput, setCouponInput] = useState('');
+  const [checkingArea, setCheckingArea] = useState(false);
   // Keep the quote live: changing address or payment method re-runs the
   // server-side pricing engine, so the delivery fee shown is always the fee
   // that will be charged for the current selection.
@@ -197,10 +199,28 @@ export default function CheckoutScreen() {
         ? 'Pay with Wallet'
         : 'Proceed to Pay';
 
-  const onContinue = () => {
+  const onContinue = async () => {
     if (!hasAddress) {
       navigation.navigate('Addresses', { fromCheckout: true });
       return;
+    }
+    if (checkingArea) return;
+    // An address saved earlier may no longer be in a delivery zone — check
+    // before payment instead of letting the order fail afterwards.
+    if (selectedAddress.latitude && selectedAddress.longitude) {
+      setCheckingArea(true);
+      try {
+        const check = await storeApi.assign(selectedAddress.latitude, selectedAddress.longitude);
+        if (check?.serviceable === false) {
+          showToast(check.message || "We don't deliver to this address yet. Choose another address.", 'err');
+          return;
+        }
+        if (check?.store?._id) mmkvStorage.setItem('assignedStoreId', check.store._id);
+      } catch {
+        // Network hiccup: let the server validate at order time.
+      } finally {
+        setCheckingArea(false);
+      }
     }
     if (orderForSomeone) {
       const name = receiverName.trim();
@@ -466,6 +486,8 @@ export default function CheckoutScreen() {
             label={ctaLabel}
             icon={hasAddress ? 'lock' : 'pin'}
             onPress={onContinue}
+            loading={checkingArea}
+            disabled={checkingArea}
           />
         </View>
       </View>

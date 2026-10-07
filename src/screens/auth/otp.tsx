@@ -9,6 +9,7 @@ import OtpBoxInput from '../../components/OtpBoxInput';
 import { colors, fontFamily, spacing } from '../../theme';
 import { useAuth } from '../../context/AuthContext';
 import { useCart } from '../../context/CartContext';
+import { showToast } from '../../utils/toast';
 
 export default function OtpScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
@@ -18,7 +19,9 @@ export default function OtpScreen() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  const cooldownLabel = `00:${String(Math.max(resendCooldown, 0)).padStart(2, '0')}`;
+  const secs = Math.max(resendCooldown, 0);
+  const cooldownLabel = `${String(Math.floor(secs / 60)).padStart(2, '0')}:${String(secs % 60).padStart(2, '0')}`;
+  const locked = otpAttemptsLeft <= 0;
 
   const contact = otpSession?.phone
     ? `+91 ${otpSession.phone}`
@@ -42,7 +45,7 @@ export default function OtpScreen() {
   }, [otpSession?.mode]);
 
   const onVerify = async () => {
-    if (code.length !== 4 || loading) return;
+    if (code.length !== 4 || loading || locked) return;
     Keyboard.dismiss();
     setError(null);
     setLoading(true);
@@ -69,7 +72,13 @@ export default function OtpScreen() {
     if (resendCooldown > 0 || loading) return;
     setError(null);
     setCode('');
-    await resendOtp();
+    const res = await resendOtp();
+    if (res.success) {
+      showToast(res.message || 'A new code has been sent', 'ok');
+    } else if (res.message) {
+      setError(res.message);
+      showToast(res.message, 'err');
+    }
   };
 
   const trustItems: Array<{ icon: 'clock' | 'shield' | 'leaf'; label: string }> = [
@@ -113,8 +122,10 @@ export default function OtpScreen() {
             {error}
           </Text>
         ) : null}
-        {otpAttemptsLeft <= 2 && !error ? (
-          <Text style={styles.attemptsText}>{otpAttemptsLeft} attempts left</Text>
+        {!locked && otpAttemptsLeft <= 2 ? (
+          <Text style={styles.attemptsText} testID="otp-attempts">
+            {otpAttemptsLeft} {otpAttemptsLeft === 1 ? 'attempt' : 'attempts'} left
+          </Text>
         ) : null}
 
         <View style={styles.resendRow}>
@@ -141,7 +152,7 @@ export default function OtpScreen() {
           testID="otp-verify"
           label={loading ? 'Verifying…' : 'Verify OTP'}
           onPress={onVerify}
-          disabled={code.length !== 4 || loading}
+          disabled={code.length !== 4 || loading || locked}
           loading={loading}
         />
       </View>

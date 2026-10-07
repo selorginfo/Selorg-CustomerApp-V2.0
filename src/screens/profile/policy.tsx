@@ -6,18 +6,18 @@ import type { RouteProp } from '@react-navigation/native';
 import { Header, ScreenContainer, Skeleton } from '../../components';
 import { colors, fontFamily, radii, spacing } from '../../theme';
 import { legalApi } from '../../services/legal.service';
+import { richTextToBlocks, type TextBlock } from '../../utils/richText';
 import { getErrorCode, getErrorMessage } from '../../utils/apiError';
 import type { RootStackParamList } from '../../navigation/types';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
-function paragraphsFromContent(content?: string): string[] {
-  if (!content?.trim()) return [];
-  return content
-    .split(/\n{2,}/)
-    .map(p => p.trim())
-    .filter(Boolean);
+/** HTML / Markdown from the CMS rendered as readable paragraphs and headings. */
+function paragraphsFromContent(content?: string): TextBlock[] {
+  return richTextToBlocks(content);
 }
+
+const note = (text: string): TextBlock => ({ text });
 
 function extractContent(doc: unknown): string {
   if (!doc || typeof doc !== 'object') return '';
@@ -36,7 +36,7 @@ export default function PolicyScreen() {
   const isTerms = route.params.type === 'terms';
   const title = isTerms ? 'Terms of Service' : 'Privacy Policy';
 
-  const [paragraphs, setParagraphs] = useState<string[]>([]);
+  const [paragraphs, setParagraphs] = useState<TextBlock[]>([]);
   const [loading, setLoading] = useState(true);
   const [errorDetail, setErrorDetail] = useState<string | null>(null);
 
@@ -54,8 +54,8 @@ export default function PolicyScreen() {
         }
         // Document exists but has no body yet (or unexpected shape).
         setParagraphs([
-          `${title} content is not available yet.`,
-          'Please check back later, or contact Selorg support if you need a copy.',
+          note(`${title} content is not available yet.`),
+          note('Please check back later, or contact Selorg support if you need a copy.'),
         ]);
       })
       .catch((err: unknown) => {
@@ -64,14 +64,14 @@ export default function PolicyScreen() {
         // Backend has the route but no published document seeded → empty state, not a hard crash.
         if (code === 'NOT_FOUND' || status === 404) {
           setParagraphs([
-            `${title} content is not available yet.`,
-            'Our legal documents are being published. Please try again later.',
+            note(`${title} content is not available yet.`),
+            note('Our legal documents are being published. Please try again later.'),
           ]);
           setErrorDetail(null);
           return;
         }
         setErrorDetail(getErrorMessage(err, 'Network or server error'));
-        setParagraphs([`${title} could not be loaded. Please try again later.`]);
+        setParagraphs([note(`${title} could not be loaded. Please try again later.`)]);
       })
       .finally(() => setLoading(false));
   }, [isTerms, title]);
@@ -103,8 +103,8 @@ export default function PolicyScreen() {
           <View style={styles.card}>
             <Text style={styles.heading}>{title}</Text>
             {paragraphs.map((p, i) => (
-              <Text key={i} style={styles.paragraph}>
-                {p}
+              <Text key={i} style={p.heading ? styles.subheading : styles.paragraph}>
+                {p.text}
               </Text>
             ))}
             {errorDetail ? (
@@ -116,6 +116,15 @@ export default function PolicyScreen() {
               </View>
             ) : null}
           </View>
+          {/* Both documents stay one tap apart. */}
+          <Pressable
+            onPress={() => navigation.replace('Legal', { type: isTerms ? 'privacy' : 'terms' })}
+            style={styles.otherDoc}
+            accessibilityRole="link"
+            testID="legal-other-doc"
+          >
+            <Text style={styles.retry}>{isTerms ? 'Read our Privacy Policy' : 'Read our Terms of Service'}</Text>
+          </Pressable>
         </ScrollView>
       )}
     </ScreenContainer>
@@ -123,6 +132,8 @@ export default function PolicyScreen() {
 }
 
 const styles = StyleSheet.create({
+  subheading: { fontFamily: fontFamily.bold, fontSize: 14.5, color: colors.text, marginTop: 6, marginBottom: 8 },
+  otherDoc: { alignItems: 'center', paddingVertical: 16 },
   loader: { flex: 1, paddingHorizontal: spacing.lg, paddingTop: spacing.lg },
   content: { padding: spacing.lg, paddingBottom: 32 },
   card: {

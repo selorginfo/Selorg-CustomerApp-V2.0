@@ -362,7 +362,16 @@ export default function EnterMobileScreen() {
       <CountryCodeSheet
         visible={ccOpen}
         value={countryCode}
-        onSelect={setCountryCode}
+        onSelect={code => {
+          // The backend only verifies Indian (+91) mobiles; picking another code
+          // used to look accepted while the OTP still went to +91.
+          if (code !== '+91') {
+            showToast('Only Indian (+91) mobile numbers are supported right now', 'info');
+            setCountryCode('+91');
+            return;
+          }
+          setCountryCode(code);
+        }}
         onClose={() => setCcOpen(false)}
       />
     </ScreenContainer>

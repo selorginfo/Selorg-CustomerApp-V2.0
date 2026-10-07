@@ -27,9 +27,11 @@ interface Props {
   visible: boolean;
   order: Order | null;
   onClose: () => void;
+  /** Called after the server accepted the cancellation. */
+  onCancelled?: () => void;
 }
 
-export default function CancelOrderSheet({ visible, order, onClose }: Props) {
+export default function CancelOrderSheet({ visible, order, onClose, onCancelled }: Props) {
   const { cancelOrder, canCancel } = useOrders();
   const [reason, setReason] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -43,11 +45,18 @@ export default function CancelOrderSheet({ visible, order, onClose }: Props) {
   const handleConfirm = async () => {
     if (!order || loading) return;
     setLoading(true);
-    await cancelOrder(order, reason || undefined);
+    const ok = await cancelOrder(order, reason || undefined);
     setLoading(false);
+    // On failure keep the sheet open (the error toast explains why) so the
+    // user can retry instead of believing the order was cancelled.
+    if (!ok) return;
     setReason(null);
     onClose();
+    onCancelled?.();
   };
+
+  // COD / unpaid orders have nothing to refund.
+  const prepaid = order?.paymentStatus === 'paid';
 
   // Design shows a blocked state rather than the reason list once the order
   // has moved past the free-cancellation window.
@@ -72,7 +81,9 @@ export default function CancelOrderSheet({ visible, order, onClose }: Props) {
 
       <View style={styles.notice}>
         <Text style={styles.noticeText}>
-          You&apos;re within the free-cancellation window — no fee, full refund to your original payment method.
+          {prepaid
+            ? 'You’re within the free-cancellation window — no fee, full refund to your original payment method.'
+            : 'You’re within the free-cancellation window — no fee. Nothing has been charged for this order.'}
         </Text>
       </View>
 

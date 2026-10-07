@@ -105,5 +105,7 @@ export function toLocalOrder(raw: ApiOrder): Order {
       status: t.status,
       timestamp: t.timestamp || t.createdAt || new Date().toISOString(),
     })),
+    // Already rated on the server — the app must not offer a second rating.
+    reviewAsked: Number(raw.ratingScore) > 0,
   };
 }

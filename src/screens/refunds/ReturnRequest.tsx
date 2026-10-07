@@ -28,6 +28,22 @@ export default function ReturnRequest() {
   const [comment, setComment] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
+  if (order && order.status !== 'delivered') {
+    return (
+      <ScreenContainer>
+        <Header title="Return / report" onBack={() => navigation.goBack()} />
+        <StateView
+          kind="empty"
+          icon="box"
+          title="Not delivered yet"
+          message="You can request a return once this order has been delivered. For other issues, contact support."
+          ctaLabel="Back"
+          onCta={() => navigation.goBack()}
+        />
+      </ScreenContainer>
+    );
+  }
+
   if (!order) {
     return (
       <ScreenContainer>
@@ -44,16 +60,17 @@ export default function ReturnRequest() {
     );
   }
 
-  const canSubmit = !!itemId && !!reason && !submitting;
+  const canSubmit = !!itemId && !!reason && !submitting && order.status === 'delivered';
 
   const handleSubmit = async () => {
     if (!canSubmit || !reason) return;
     setSubmitting(true);
     const item = order.items.find(i => i.id === itemId);
     const reasonText = item ? `${reason} — ${item.name}${comment ? ` (${comment})` : ''}` : reason;
-    await submitReturn(order, reasonText, reason);
+    const ok = await submitReturn(order, reasonText, reason);
     setSubmitting(false);
-    navigation.navigate('Refunds');
+    // Stay on the form after a failure so the user can retry.
+    if (ok) navigation.navigate('Refunds');
   };
 
   return (

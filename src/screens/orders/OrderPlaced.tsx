@@ -88,7 +88,7 @@ export default function OrderPlacedScreen() {
           testID="order-placed-track"
           label="Track order"
           icon="truck"
-          onPress={() => navigation.replace('Tracking')}
+          onPress={() => navigation.replace('Tracking', { orderId: route.params.orderId })}
         />
         <PrimaryButton
           testID="order-placed-home"

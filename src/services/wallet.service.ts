@@ -51,9 +51,14 @@ export const walletApi = {
   getTransactions: (params?: { limit?: number; page?: number }): Promise<WalletTransaction[]> =>
     SelorgApi.get('/wallet/transactions', { query: params }).then(listFrom<WalletTransaction>),
 
-  initiateTopUp: (amount: number, platform?: 'android' | 'ios' | 'web'): Promise<TopUpSession> =>
+  /** `paymentMode` scopes the hosted checkout: upi | cards | wallets | netbanking (default all). */
+  initiateTopUp: (
+    amount: number,
+    platform?: 'android' | 'ios' | 'web',
+    paymentMode?: 'upi' | 'cards' | 'wallets' | 'netbanking',
+  ): Promise<TopUpSession> =>
     SelorgApi.post('/wallet/top-up/session', {
-      data: { amount, platform: platform ?? apiPlatform() },
+      data: { amount, platform: platform ?? apiPlatform(), ...(paymentMode ? { paymentMode } : {}) },
     }).then(unwrap<TopUpSession>),
 
   debitForCheckout: (amount: number, orderId?: string): Promise<void> =>

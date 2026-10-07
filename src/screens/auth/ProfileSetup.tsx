@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import React, { useCallback, useEffect, useState } from 'react';
+import { BackHandler, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../navigation/types';
@@ -13,7 +13,7 @@ import { isValidEmail, isValidPersonName } from '../../utils/validation';
 
 export default function ProfileSetupScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
-  const { completeSignupProfile } = useAuth();
+  const { completeSignupProfile, logout } = useAuth();
   const { mergeGuestCartOnLogin } = useCart();
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
@@ -23,13 +23,29 @@ export default function ProfileSetupScreen() {
   // (selorg-web-app/src/lib/validation.ts).
   const valid = isValidPersonName(fullName) && (!email.trim() || isValidEmail(email));
 
+  // The stack is reset after OTP, so goBack() had nowhere to go. Back abandons
+  // the half-created session and returns to Sign Up.
+  const onBack = useCallback(() => {
+    if (loading) return;
+    logout();
+    navigation.reset({ index: 0, routes: [{ name: 'EnterMobile', params: { mode: 'signup' } }] });
+  }, [loading, logout, navigation]);
+
+  useEffect(() => {
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      onBack();
+      return true;
+    });
+    return () => sub.remove();
+  }, [onBack]);
+
   const onSubmit = async () => {
     if (!valid || loading) return;
     setLoading(true);
     try {
       await completeSignupProfile(fullName.trim(), email.trim() || undefined);
       await mergeGuestCartOnLogin();
-      navigation.navigate('LocationPermission');
+      navigation.reset({ index: 0, routes: [{ name: 'LocationPermission' }] });
     } finally {
       setLoading(false);
     }
@@ -37,7 +53,7 @@ export default function ProfileSetupScreen() {
 
   return (
     <ScreenContainer edges={['top', 'bottom']}>
-      <BackButton onPress={() => navigation.goBack()} />
+      <BackButton onPress={onBack} />
       <View style={styles.flex}>
         <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
           <View style={styles.headTextWrap}>

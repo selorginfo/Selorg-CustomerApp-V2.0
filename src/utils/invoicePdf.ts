@@ -19,6 +19,8 @@ export interface InvoicePdfInput {
   subtotal: number;
   discount: number;
   deliveryFee: number;
+  handlingCharge?: number;
+  tax?: number;
   tip: number;
   total: number;
   gstNote?: string;
@@ -94,6 +96,8 @@ function buildHtml(data: InvoicePdfInput): string {
     ${line('Item total', money(data.subtotal))}
     ${data.discount > 0 ? line('Discount', `- ${money(data.discount)}`) : ''}
     ${line('Delivery', data.deliveryFee === 0 ? 'FREE' : money(data.deliveryFee))}
+    ${data.handlingCharge ? line('Handling charge', money(data.handlingCharge)) : ''}
+    ${data.tax ? line('GST & taxes', money(data.tax)) : ''}
     ${data.tip > 0 ? line('Tip', money(data.tip)) : ''}
     ${line('Total paid', money(data.total), true)}
   </div>

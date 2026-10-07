@@ -80,6 +80,17 @@ export default function Invoice() {
 
   const total = invoice?.totalAmount ?? invoice?.total ?? order.totalBill;
   const subtotal = invoice?.subtotal ?? order.itemTotal;
+  const handlingCharge = Number(invoice?.handlingCharge ?? 0);
+  // Tax breakdown: the invoice's own figure, else whatever the listed rows don't explain.
+  const tax =
+    typeof invoice?.tax === 'number' && invoice.tax > 0
+      ? invoice.tax
+      : Math.max(
+          0,
+          Math.round(
+            (total - (Math.max(0, subtotal - order.discount) + order.deliveryFee + handlingCharge + order.tip)) * 100,
+          ) / 100,
+        );
 
   const handleDownload = async () => {
     if (downloading) return;
@@ -101,6 +112,8 @@ export default function Invoice() {
         subtotal,
         discount: order.discount,
         deliveryFee: order.deliveryFee,
+        handlingCharge,
+        tax,
         tip: order.tip,
         total,
         gstNote: invoice?.taxInfo?.gstNumber,
@@ -180,6 +193,18 @@ export default function Invoice() {
                 <Text style={styles.billLabel}>Delivery</Text>
                 <Text style={styles.billValue}>{order.deliveryFee === 0 ? 'FREE' : formatCurrency(order.deliveryFee)}</Text>
               </View>
+              {handlingCharge > 0 ? (
+                <View style={styles.billRow}>
+                  <Text style={styles.billLabel}>Handling charge</Text>
+                  <Text style={styles.billValue}>{formatCurrency(handlingCharge)}</Text>
+                </View>
+              ) : null}
+              {tax > 0 ? (
+                <View style={styles.billRow}>
+                  <Text style={styles.billLabel}>GST & taxes</Text>
+                  <Text style={styles.billValue}>{formatCurrency(tax)}</Text>
+                </View>
+              ) : null}
               {order.tip > 0 ? (
                 <View style={styles.billRow}>
                   <Text style={styles.billLabel}>Tip</Text>

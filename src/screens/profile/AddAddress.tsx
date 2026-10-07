@@ -199,8 +199,17 @@ export default function AddAddressScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [addressId]);
 
+  const [saving, setSaving] = useState(false);
+  const savingRef = useRef(false);
+
   const handleSave = async () => {
-    const ok = await saveAddress({
+    // Ref guard: a fast double tap fires before the disabled state renders.
+    if (savingRef.current) return;
+    savingRef.current = true;
+    setSaving(true);
+    let ok = false;
+    try {
+      ok = await saveAddress({
       id: addressId ?? null,
       label,
       line1,
@@ -211,7 +220,11 @@ export default function AddAddressScreen() {
       pincode,
       latitude: pinSet ? coords.latitude : 0,
       longitude: pinSet ? coords.longitude : 0,
-    });
+      });
+    } finally {
+      savingRef.current = false;
+      setSaving(false);
+    }
     if (ok) navigation.goBack();
   };
 
@@ -354,7 +367,13 @@ export default function AddAddressScreen() {
         </View>
       </ScrollView>
       <View style={styles.bottomBar}>
-        <PrimaryButton testID="address-save" label="Save address" onPress={handleSave} />
+        <PrimaryButton
+          testID="address-save"
+          label={saving ? 'Saving…' : 'Save address'}
+          onPress={handleSave}
+          disabled={saving}
+          loading={saving}
+        />
       </View>
     </ScreenContainer>
   );

@@ -6,6 +6,7 @@ import { colors, fontFamily, radii, shadows } from '../../theme';
 import { ScreenContainer, Header, Icon, PrimaryButton, StateView } from '../../components';
 import { useOrders } from '../../context/OrdersContext';
 import { showToast } from '../../utils/toast';
+import { getErrorMessage } from '../../utils/apiError';
 import { RootStackParamList } from '../../navigation/types';
 
 export default function RateOrder() {
@@ -40,8 +41,8 @@ export default function RateOrder() {
     try {
       await rateOrder(order.id, stars, comment.trim() || undefined);
       navigation.replace('RatingSuccess');
-    } catch {
-      showToast('Could not submit rating', 'err');
+    } catch (err) {
+      showToast(getErrorMessage(err, 'Could not submit rating'), 'err');
     } finally {
       setSubmitting(false);
     }
