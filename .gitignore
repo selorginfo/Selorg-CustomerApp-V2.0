@@ -156,3 +156,9 @@ compile_commands.json
 
 # React Native generated native files
 android/app/.externalNativeBuild/
+# Android / CMake generated files
+.cmake/
+android/.cxx/
+android/app/.cxx/
+**/.cxx/
+**/.cmake/
