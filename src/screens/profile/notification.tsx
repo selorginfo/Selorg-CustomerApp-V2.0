@@ -64,7 +64,7 @@ export default function NotificationsScreen() {
               style={[styles.row, { backgroundColor: n.read ? colors.card : colors.white, borderColor: n.read ? colors.border : colors.primarySoft }]}
             >
               <View style={styles.iconTile}>
-                <Icon name={TYPE_ICON[n.type] || 'bell'} size={19} color={colors.primary} />
+                <Icon name={TYPE_ICON[n.type] || 'bell'} size={19} color={colors.accent} />
               </View>
               <View style={styles.textWrap}>
                 <View style={styles.titleRow}>
@@ -91,7 +91,7 @@ export default function NotificationsScreen() {
 const styles = StyleSheet.create({
   content: { padding: spacing.md, paddingBottom: spacing.xl },
   markAllBtn: { paddingVertical: 6, paddingHorizontal: 8 },
-  markAllLabel: { fontFamily: fontFamily.bold, fontSize: 12.5, color: colors.primary },
+  markAllLabel: { fontFamily: fontFamily.bold, fontSize: 12.5, color: colors.accent },
   row: {
     flexDirection: 'row',
     gap: 12,

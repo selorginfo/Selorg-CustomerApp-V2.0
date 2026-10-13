@@ -1,6 +1,7 @@
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { colors, fontFamily, spacing } from '../theme';
+import { brandConfig } from '../brands';
 import BottomSheet from './BottomSheet';
 import Icon from './Icon';
 import PrimaryButton from './PrimaryButton';
@@ -19,7 +20,7 @@ export default function LogoutConfirmSheet({ visible, onClose, onConfirm }: Prop
         <View style={styles.iconWrap}>
           <Icon name="logout" size={28} color={colors.danger} strokeWidth={2.2} />
         </View>
-        <Text style={styles.title}>Log out of Selorg?</Text>
+        <Text style={styles.title}>Log out of {brandConfig.appName}?</Text>
         <Text style={styles.sub}>
           You can always log back in with your mobile number. Your cart will stay saved on this device.
         </Text>

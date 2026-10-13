@@ -338,7 +338,7 @@ export default function AddAddressScreen() {
 
           {!pinSet && (
             <View pointerEvents="none" style={styles.mapHint}>
-              <Icon name="pin" size={16} color={colors.primaryDark} />
+              <Icon name="pin" size={16} color={colors.accentDark} />
               <Text style={styles.mapHintText}>Tap the map to drop a pin</Text>
             </View>
           )}
@@ -350,9 +350,9 @@ export default function AddAddressScreen() {
             testID="address-use-location"
           >
             {locating ? (
-              <ActivityIndicator size="small" color={colors.primaryDark} />
+              <ActivityIndicator size="small" color={colors.accentDark} />
             ) : (
-              <Icon name="navigation" size={16} color={colors.primaryDark} />
+              <Icon name="navigation" size={16} color={colors.accentDark} />
             )}
             <Text style={styles.locateBtnText}>
               {locating ? 'Locating…' : 'Use my location'}
@@ -361,7 +361,7 @@ export default function AddAddressScreen() {
 
           {geocoding && (
             <View pointerEvents="none" style={styles.geocodeBadge}>
-              <ActivityIndicator size="small" color={colors.white} />
+              <ActivityIndicator size="small" color={colors.onPrimary} />
             </View>
           )}
         </View>
@@ -400,7 +400,7 @@ const styles = StyleSheet.create({
     paddingVertical: 7,
     borderRadius: radii.lg,
   },
-  mapHintText: { fontFamily: fontFamily.bold, fontSize: 12, color: colors.primaryDark },
+  mapHintText: { fontFamily: fontFamily.bold, fontSize: 12, color: colors.accentDark },
   locateBtn: {
     position: 'absolute',
     right: 10,
@@ -414,7 +414,7 @@ const styles = StyleSheet.create({
     borderRadius: radii.lg,
     elevation: 2,
   },
-  locateBtnText: { fontFamily: fontFamily.bold, fontSize: 12, color: colors.primaryDark },
+  locateBtnText: { fontFamily: fontFamily.bold, fontSize: 12, color: colors.accentDark },
   geocodeBadge: {
     position: 'absolute',
     left: 10,
@@ -438,7 +438,7 @@ const styles = StyleSheet.create({
   },
   labelChipActive: { borderColor: colors.primary, backgroundColor: colors.tint },
   labelChipText: { fontFamily: fontFamily.bold, fontSize: 13, color: colors.textMuted },
-  labelChipTextActive: { color: colors.primaryDark },
+  labelChipTextActive: { color: colors.accentDark },
   field: { marginBottom: 14 },
   fieldLabel: { fontFamily: fontFamily.bold, fontSize: 12, color: colors.text, letterSpacing: 0.3 },
   input: {

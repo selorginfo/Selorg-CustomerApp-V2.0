@@ -100,7 +100,7 @@ function LocationPulse({ active }: { active: boolean }) {
           },
         ]}
       >
-        <Icon name="pin" size={44} color={colors.primary} strokeWidth={1.8} />
+        <Icon name="pin" size={44} color={colors.accent} strokeWidth={1.8} />
       </Animated.View>
     </View>
   );

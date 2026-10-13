@@ -8,6 +8,7 @@ import { PrimaryButton, ScreenContainer } from '../../components';
 import BackButton from '../../components/BackButton';
 import PasswordField from '../../components/PasswordField';
 import { colors, fontFamily, radii, spacing } from '../../theme';
+import { brandColors } from '../../brands';
 import { useAuth } from '../../context/AuthContext';
 import { showToast } from '../../utils/toast';
 
@@ -138,14 +139,14 @@ const styles = StyleSheet.create({
   methodBtn: { flex: 1, paddingVertical: 10, borderRadius: 10, alignItems: 'center' },
   methodBtnOn: {
     backgroundColor: colors.white,
-    shadowColor: '#456e29',
+    shadowColor: brandColors.accentShadow,
     shadowOpacity: 0.25,
     shadowRadius: 6,
     shadowOffset: { width: 0, height: 2 },
     elevation: 1,
   },
   methodLabel: { fontFamily: fontFamily.bold, fontSize: 13, color: colors.textMuted },
-  methodLabelOn: { color: colors.primaryDark },
+  methodLabelOn: { color: colors.accentDark },
   field: { marginBottom: spacing.md },
   fieldLabel: { fontFamily: fontFamily.bold, fontSize: 12, color: colors.textMuted },
   input: {
@@ -182,9 +183,9 @@ const styles = StyleSheet.create({
   },
   phoneInput: { flex: 1, fontFamily: fontFamily.semibold, fontSize: 16, color: colors.text, paddingVertical: 13 },
   forgotWrap: { marginTop: spacing.sm + 4, alignSelf: 'flex-start' },
-  forgotText: { fontFamily: fontFamily.bold, fontSize: 12.5, color: colors.primary },
+  forgotText: { fontFamily: fontFamily.bold, fontSize: 12.5, color: colors.accent },
   ctaWrap: { marginTop: spacing.lg, alignItems: 'center' },
   signupRow: { flexDirection: 'row', justifyContent: 'center', marginTop: spacing.md },
   signupText: { fontFamily: fontFamily.semibold, fontSize: 13, color: colors.textMuted },
-  signupLink: { fontFamily: fontFamily.bold, fontSize: 13, color: colors.primary },
+  signupLink: { fontFamily: fontFamily.bold, fontSize: 13, color: colors.accent },
 });

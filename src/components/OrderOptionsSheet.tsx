@@ -37,7 +37,7 @@ export default function OrderOptionsSheet({ visible, onClose, options }: Props) 
           }}
         >
           <View style={[styles.iconTile, o.danger && styles.iconTileDanger]}>
-            <Icon name={o.icon} size={19} color={o.danger ? colors.danger : colors.primary} strokeWidth={2} />
+            <Icon name={o.icon} size={19} color={o.danger ? colors.danger : colors.accent} strokeWidth={2} />
           </View>
           <View style={styles.body}>
             <Text style={[styles.label, o.danger && styles.labelDanger]}>{o.label}</Text>

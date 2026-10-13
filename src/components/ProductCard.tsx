@@ -185,7 +185,7 @@ const styles = StyleSheet.create({
     paddingVertical: 2,
     paddingHorizontal: 6,
   },
-  ratingLabel: { fontFamily: fontFamily.bold, fontSize: 10.5, color: colors.primaryDark },
+  ratingLabel: { fontFamily: fontFamily.bold, fontSize: 10.5, color: colors.accentDark },
   bottomRow: {
     flexDirection: 'row',
     alignItems: 'flex-end',
@@ -197,6 +197,6 @@ const styles = StyleSheet.create({
     paddingBottom: 10,
   },
   priceCol: { flex: 1, minWidth: 0 },
-  price: { fontFamily: fontFamily.bold, fontSize: 15, color: colors.primaryDark },
+  price: { fontFamily: fontFamily.bold, fontSize: 15, color: colors.accentDark },
   unit: { fontFamily: fontFamily.semibold, fontSize: 10.5, color: colors.textMuted, marginTop: 1 },
 });

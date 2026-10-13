@@ -9,6 +9,7 @@ import { legalApi } from '../../services/legal.service';
 import { richTextToBlocks, type TextBlock } from '../../utils/richText';
 import { getErrorCode, getErrorMessage } from '../../utils/apiError';
 import type { RootStackParamList } from '../../navigation/types';
+import { brandConfig } from '../../brands';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -55,7 +56,7 @@ export default function PolicyScreen() {
         // Document exists but has no body yet (or unexpected shape).
         setParagraphs([
           note(`${title} content is not available yet.`),
-          note('Please check back later, or contact Selorg support if you need a copy.'),
+          note(`Please check back later, or contact ${brandConfig.appName} support if you need a copy.`),
         ]);
       })
       .catch((err: unknown) => {
@@ -158,5 +159,5 @@ const styles = StyleSheet.create({
   },
   retryBox: { marginTop: spacing.md, gap: 8 },
   errorDetail: { fontFamily: fontFamily.semibold, fontSize: 12, color: colors.textMuted },
-  retry: { fontFamily: fontFamily.bold, fontSize: 14, color: colors.primary },
+  retry: { fontFamily: fontFamily.bold, fontSize: 14, color: colors.accent },
 });

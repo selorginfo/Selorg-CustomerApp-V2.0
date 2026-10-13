@@ -151,7 +151,7 @@ export default function CollectionScreen() {
           style={[styles.sortBtn, activeCount > 0 && styles.sortBtnOn]}
           onPress={() => setFilterOpen(true)}
         >
-          <Icon name="sort2" size={17} color={activeCount > 0 ? colors.primary : colors.text} />
+          <Icon name="sort2" size={17} color={activeCount > 0 ? colors.accent : colors.text} />
           <Text style={[styles.sortBtnLabel, activeCount > 0 && styles.sortBtnLabelOn]}>Filters</Text>
           {activeCount > 0 ? (
             <View style={styles.countBadge}>
@@ -247,12 +247,12 @@ const styles = StyleSheet.create({
   },
   sortBtnOn: { borderColor: colors.primary },
   sortBtnLabel: { fontFamily: fontFamily.bold, fontSize: 13.5, color: colors.text },
-  sortBtnLabelOn: { color: colors.primaryDark },
+  sortBtnLabelOn: { color: colors.accentDark },
   countBadge: {
     minWidth: 18, height: 18, borderRadius: 9, backgroundColor: colors.primary,
     alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4,
   },
-  countBadgeLabel: { fontFamily: fontFamily.bold, fontSize: 10, color: colors.white },
+  countBadgeLabel: { fontFamily: fontFamily.bold, fontSize: 10, color: colors.onPrimary },
   gridScroll: { flex: 1 },
   grid: {
     flexDirection: 'row',

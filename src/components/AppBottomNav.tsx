@@ -3,6 +3,7 @@ import { Animated, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { colors, fontFamily } from '../theme';
+import { brandColors } from '../brands';
 import { useCart } from '../context/CartContext';
 import type { IconName } from './Icon';
 import AnimatedIcon from './AnimatedIcon';
@@ -67,7 +68,7 @@ function CartFab({ onPress, count, active }: { onPress: () => void; count: numbe
         accessibilityLabel="Cart"
         accessibilityState={{ selected: active }}
       >
-        <AnimatedIcon name="shoppingCart" motion="pop" trigger={count} size={24} color={colors.white} strokeWidth={2.4} />
+        <AnimatedIcon name="shoppingCart" motion="pop" trigger={count} size={24} color={colors.onPrimary} strokeWidth={2.4} />
         {count > 0 ? (
           <Animated.View style={[styles.cartBadge, { transform: [{ scale: pop }] }]}>
             <Text style={styles.cartBadgeLabel} testID="tab-cart-badge">
@@ -105,7 +106,7 @@ function TabButton({
           motion={['pop', 'bounce']}
           active={active}
           size={22}
-          color={active ? colors.primary : INACTIVE}
+          color={active ? colors.accent : INACTIVE}
           strokeWidth={active ? 2.4 : 2}
         />
       </View>
@@ -224,7 +225,7 @@ const styles = StyleSheet.create({
     marginTop: 3,
     color: INACTIVE,
   },
-  itemLabelActive: { fontFamily: fontFamily.bold, color: colors.primary },
+  itemLabelActive: { fontFamily: fontFamily.bold, color: colors.accent },
 
   fabSlot: {
     position: 'absolute',
@@ -247,7 +248,7 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 12 },
     elevation: 10,
   },
-  cartFabActive: { borderWidth: 3, borderColor: '#CFECCD' },
+  cartFabActive: { borderWidth: 3, borderColor: brandColors.cartRing },
   cartBadge: {
     position: 'absolute',
     top: -3,

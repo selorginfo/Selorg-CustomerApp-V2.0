@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "393424735293",
+    "project_id": "sodakku-customer-app",
+    "storage_bucket": "sodakku-customer-app.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:393424735293:android:b65e3a1b95ad9754776e54",
+        "android_client_info": {
+          "package_name": "com.sodakku.com"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCGojwi4l59b6ST4PhDFtGxbmudPFBST40"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

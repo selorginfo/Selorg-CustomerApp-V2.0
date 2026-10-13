@@ -14,6 +14,7 @@ const TOPUP_PRESETS = [100, 250, 500];
 import type { WalletTxn } from '../../context/WalletContext';
 import { TOPUP_MAX, TOPUP_MIN, useWallet } from '../../context/WalletContext';
 import type { RootStackParamList } from '../../navigation/types';
+import { brandConfig } from '../../brands';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 type Method = 'upi' | 'cards' | 'wallets' | 'netbanking';
@@ -105,14 +106,14 @@ export default function WalletScreen() {
   return (
     <ScreenContainer>
       <View testID="wallet-screen" style={styles.flex}>
-      <Header title="Selorg Wallet" onBack={() => navigation.goBack()} />
+      <Header title={`${brandConfig.appName} Wallet`} onBack={() => navigation.goBack()} />
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        <LinearGradient colors={[colors.primary, colors.primaryDark]} style={styles.hero} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
+        <LinearGradient colors={[colors.accent, colors.accentDark]} style={styles.hero} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
           <View style={styles.heroWatermark} pointerEvents="none">
             <Icon name="wallet" size={120} color={colors.white} strokeWidth={1.2} />
           </View>
           <View style={styles.heroTopRow}>
-            <Text style={styles.heroLabel}>Selorg Wallet Balance</Text>
+            <Text style={styles.heroLabel}>{brandConfig.appName} Wallet Balance</Text>
             <Pressable onPress={onRefresh} disabled={refreshing} style={styles.refreshBtn}>
               {refreshing ? (
                 <ActivityIndicator size="small" color={colors.white} />
@@ -164,7 +165,7 @@ export default function WalletScreen() {
               accessibilityRole="button"
               accessibilityLabel="Add money to wallet"
             >
-              <Icon name="plus" size={16} color={colors.primaryDark} strokeWidth={2.4} />
+              <Icon name="plus" size={16} color={colors.accentDark} strokeWidth={2.4} />
               <Text style={styles.addLabel}>Add {formatCurrency(amount || 0)}</Text>
             </Pressable>
           </View>
@@ -185,13 +186,13 @@ export default function WalletScreen() {
             {wallet.txns.map((t: WalletTxn, i: number) => (
               <View key={t.id} style={[styles.txnRow, i < wallet.txns.length - 1 && styles.txnRowBorder]}>
                 <View style={styles.txnIcon}>
-                  <Icon name={SRC_ICON[t.source] || 'card'} size={18} color={colors.primary} />
+                  <Icon name={SRC_ICON[t.source] || 'card'} size={18} color={colors.accent} />
                 </View>
                 <View style={styles.txnTextWrap}>
                   <Text style={styles.txnNote}>{t.note}</Text>
                   <Text style={styles.txnDate}>{shortDate(t.ts)}</Text>
                 </View>
-                <Text style={[styles.txnAmount, { color: t.type === 'credit' ? colors.primary : colors.text }]}>
+                <Text style={[styles.txnAmount, { color: t.type === 'credit' ? colors.accent : colors.text }]}>
                   {t.type === 'credit' ? '+' : '−'}{formatCurrency(t.amount)}
                 </Text>
               </View>
@@ -203,7 +204,7 @@ export default function WalletScreen() {
 
       <BottomSheet visible={sheetVisible} onClose={() => !processing && setSheetVisible(false)}>
         <LinearGradient
-          colors={[colors.primary, colors.primaryDark]}
+          colors={[colors.accent, colors.accentDark]}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
           style={styles.sheetHeader}
@@ -230,15 +231,15 @@ export default function WalletScreen() {
         </LinearGradient>
 
         <View style={styles.secureStrip}>
-          <Icon name="lock" size={14} color={colors.primaryDark} />
+          <Icon name="lock" size={14} color={colors.accentDark} />
           <Text style={styles.secureLabel}>Secured with industry-standard encryption</Text>
         </View>
 
         {processing ? (
           <View style={styles.processingWrap}>
-            <ActivityIndicator size="large" color={colors.primary} />
+            <ActivityIndicator size="large" color={colors.accent} />
             <Text style={styles.processingTitle}>Processing…</Text>
-            <Text style={styles.processingSub}>Adding {formatCurrency(amount)} to your Selorg wallet.</Text>
+            <Text style={styles.processingSub}>Adding {formatCurrency(amount)} to your {brandConfig.appName} wallet.</Text>
           </View>
         ) : (
           <View style={styles.methodSection}>
@@ -247,7 +248,7 @@ export default function WalletScreen() {
               {METHODS.map(m => (
                 <Pressable key={m.id} onPress={() => onSelectMethod(m.id)} style={styles.methodBtn}>
                   <View style={styles.methodIconTile}>
-                    <Icon name={m.icon} size={22} color={colors.primary} />
+                    <Icon name={m.icon} size={22} color={colors.accent} />
                   </View>
                   <Text style={styles.methodLabel}>{m.label}</Text>
                 </Pressable>
@@ -305,7 +306,7 @@ const styles = StyleSheet.create({
   },
   chipActive: { backgroundColor: colors.white },
   chipLabel: { fontFamily: fontFamily.bold, fontSize: 13, color: colors.white },
-  chipLabelActive: { color: colors.primaryDark },
+  chipLabelActive: { color: colors.accentDark },
   customWrap: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -332,7 +333,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 18,
   },
   addBtnDisabled: { opacity: 0.6 },
-  addLabel: { fontFamily: fontFamily.bold, fontSize: 14, color: colors.primaryDark },
+  addLabel: { fontFamily: fontFamily.bold, fontSize: 14, color: colors.accentDark },
   txnTitle: { fontFamily: fontFamily.bold, fontSize: 15, color: colors.text, marginBottom: 12 },
   txnGroup: {
     backgroundColor: colors.card,
@@ -392,7 +393,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     backgroundColor: colors.tint,
   },
-  secureLabel: { fontFamily: fontFamily.bold, fontSize: 11.5, color: colors.primaryDark },
+  secureLabel: { fontFamily: fontFamily.bold, fontSize: 11.5, color: colors.accentDark },
   methodSection: { paddingTop: 18 },
   amountHint: { fontFamily: fontFamily.bold, fontSize: 12, color: colors.white, marginTop: 6, opacity: 0.9 },
   methodHeading: { fontFamily: fontFamily.bold, fontSize: 13, color: colors.text, marginBottom: 12 },

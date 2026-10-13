@@ -102,7 +102,7 @@ export default function WorldlineCheckoutWebView({
       </View>
       {loading ? (
         <View style={styles.loader} pointerEvents="none">
-          <ActivityIndicator size="large" color={colors.primary} />
+          <ActivityIndicator size="large" color={colors.accent} />
         </View>
       ) : null}
       <WebView
@@ -163,7 +163,7 @@ const styles = StyleSheet.create({
   close: {
     fontFamily: fontFamily.medium,
     fontSize: 15,
-    color: colors.primary,
+    color: colors.accent,
   },
   title: {
     flex: 1,

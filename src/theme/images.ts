@@ -1,6 +1,8 @@
+import { brandAssets } from '../brands';
+
 /** Central registry of bundled raster assets used across the redesigned app. */
 export const images = {
-  appLogo: require('../../assets/images/app-logo.png'),
+  appLogo: brandAssets.appLogo,
   banner: require('../../assets/images/banner.png'),
   dealBanner: require('../../assets/images/deal-banner.png'),
   emptyCart: require('../../assets/images/empty-cart.png'),
@@ -9,7 +11,7 @@ export const images = {
   onboard1: require('../../assets/images/onboard-1.png'),
   onboard2: require('../../assets/images/onboard-2.png'),
   onboard3: require('../../assets/images/onboard-3.png'),
-  organicTagline: require('../../assets/images/organic-tagline.png'),
+  organicTagline: brandAssets.organicTagline,
   rider: require('../../assets/images/rider.png'),
   tinyTummies: require('../../assets/images/tiny-tummies.png'),
   wellbeing: require('../../assets/images/wellbeing.png'),

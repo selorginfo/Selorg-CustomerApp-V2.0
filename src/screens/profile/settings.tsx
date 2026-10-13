@@ -9,6 +9,7 @@ import { useNotifications } from '../../context/NotificationsContext';
 import { authApi } from '../../services/auth.service';
 import { getErrorMessage } from '../../utils/apiError';
 import type { RootStackParamList } from '../../navigation/types';
+import { brandConfig } from '../../brands';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -115,7 +116,7 @@ export default function SettingsScreen() {
         </View>
 
         <PrimaryButton testID="settings-logout" label="Log out" onPress={() => setLogoutOpen(true)} kind="danger" />
-        <Text style={styles.versionLabel}>Selorg · v2.0.0</Text>
+        <Text style={styles.versionLabel}>{brandConfig.appName} · v2.0.0</Text>
       </ScrollView>
 
       <LogoutConfirmSheet
@@ -135,7 +136,7 @@ export default function SettingsScreen() {
             <View style={styles.deleteIconWrap}>
               <Icon name="alert" size={28} color={colors.danger} strokeWidth={2.2} />
             </View>
-            <Text style={styles.deleteTitle}>Delete your Selorg account?</Text>
+            <Text style={styles.deleteTitle}>Delete your {brandConfig.appName} account?</Text>
             <Text style={styles.deleteSub}>
               Your name, mobile number, email, saved addresses, and cart are removed. This cannot be undone.
               Finish or cancel any open order first, and use any wallet balance. We will send a code to confirm
@@ -160,7 +161,7 @@ export default function SettingsScreen() {
         ) : (
           <View style={styles.deleteBody}>
             <View style={[styles.deleteIconWrap, styles.deleteIconWrapOtp]}>
-              <Icon name="shield" size={28} color={colors.primaryDark} strokeWidth={2.2} />
+              <Icon name="shield" size={28} color={colors.accentDark} strokeWidth={2.2} />
             </View>
             <Text style={styles.deleteTitle}>Enter the verification code</Text>
             <Text style={styles.deleteSub}>We sent a 4-digit code to {maskedContact}.</Text>

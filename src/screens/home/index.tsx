@@ -28,6 +28,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useAddress } from '../../context/AddressContext';
 import { useDeliveryEta } from '../../utils/useDeliveryEta';
 import type { RootStackParamList } from '../../navigation/types';
+import { brandConfig } from '../../brands';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -396,7 +397,7 @@ export default function HomeScreen() {
       <LinearGradient colors={[colors.white, colors.white]} style={styles.headerWrap}>
         <View style={styles.headerRow}>
           <Pressable style={styles.locBtn} onPress={onLocation} hitSlop={6}>
-            <Icon name="pin" size={18} color={colors.primary} />
+            <Icon name="pin" size={18} color={colors.accent} />
             <View style={styles.locTextWrap}>
               <View style={styles.locTitleRow}>
                 <Text style={styles.locTitle} numberOfLines={1}>
@@ -456,8 +457,8 @@ export default function HomeScreen() {
           <RefreshControl
             refreshing={refreshing}
             onRefresh={onPullRefresh}
-            colors={[colors.primary]}
-            tintColor={colors.primary}
+            colors={[colors.accent]}
+            tintColor={colors.accent}
           />
         }
       >
@@ -480,7 +481,7 @@ export default function HomeScreen() {
           <View style={styles.hPad}>
             <StateView
               kind="error"
-              title="Couldn't load Selorg"
+              title={`Couldn't load ${brandConfig.appName}`}
               message="We couldn't reach the store. Check your connection and try again."
               ctaLabel="Retry"
               onCta={load}
@@ -660,7 +661,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
   },
   sectionTitle: { fontFamily: fontFamily.bold, fontSize: 18, color: colors.text, flex: 1, paddingRight: 8 },
-  seeAll: { fontFamily: fontFamily.bold, fontSize: 13, color: colors.primary },
+  seeAll: { fontFamily: fontFamily.bold, fontSize: 13, color: colors.accent },
 
   catRail: { paddingHorizontal: 16, gap: 12 },
   catItem: { width: 76, alignItems: 'center' },

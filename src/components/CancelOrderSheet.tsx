@@ -131,7 +131,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
   },
-  noticeText: { fontFamily: fontFamily.semibold, fontSize: 12.5, color: colors.primaryDark, lineHeight: 17 },
+  noticeText: { fontFamily: fontFamily.semibold, fontSize: 12.5, color: colors.accentDark, lineHeight: 17 },
   q: { fontFamily: fontFamily.bold, fontSize: 14, color: colors.text, marginBottom: 12 },
   reasonRow: {
     flexDirection: 'row',

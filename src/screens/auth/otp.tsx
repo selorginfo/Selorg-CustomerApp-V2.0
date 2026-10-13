@@ -92,9 +92,9 @@ export default function OtpScreen() {
       <BackButton onPress={goChangeContact} testID="otp-back" />
       <View style={styles.body} testID="otp-screen">
         <View style={styles.iconOuter}>
-          <Icon name="phone" size={46} color={colors.primary} strokeWidth={1.8} />
+          <Icon name="phone" size={46} color={colors.accent} strokeWidth={1.8} />
           <View style={styles.lockBadge}>
-            <Icon name="lock" size={15} color={colors.white} strokeWidth={2.4} />
+            <Icon name="lock" size={15} color={colors.onPrimary} strokeWidth={2.4} />
           </View>
         </View>
 
@@ -161,7 +161,7 @@ export default function OtpScreen() {
         {trustItems.map(t => (
           <View key={t.label} style={styles.trustItem}>
             <View style={styles.trustIconTile}>
-              <Icon name={t.icon} size={17} color={colors.primary} strokeWidth={2} />
+              <Icon name={t.icon} size={17} color={colors.accent} strokeWidth={2} />
             </View>
             <Text style={styles.trustLabel}>{t.label}</Text>
           </View>
@@ -201,14 +201,14 @@ const styles = StyleSheet.create({
   sub: { fontFamily: fontFamily.semibold, fontSize: 13.5, color: colors.textMuted, marginTop: spacing.sm, lineHeight: 19 },
   contactRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 3 },
   contactText: { fontFamily: fontFamily.bold, fontSize: 14, color: colors.text },
-  changeLink: { fontFamily: fontFamily.bold, fontSize: 13, color: colors.primary },
+  changeLink: { fontFamily: fontFamily.bold, fontSize: 13, color: colors.accent },
   otpWrap: { marginTop: spacing.lg + 2 },
   errorText: { color: colors.danger, fontFamily: fontFamily.bold, fontSize: 12.5, marginTop: spacing.sm + 6 },
   attemptsText: { color: colors.textMuted, fontFamily: fontFamily.semibold, fontSize: 12, marginTop: spacing.sm },
   resendRow: { marginTop: spacing.md + 2 },
   resendMuted: { fontFamily: fontFamily.semibold, fontSize: 13, color: colors.textMuted },
   resendBold: { fontFamily: fontFamily.bold, color: colors.text },
-  resendLink: { fontFamily: fontFamily.bold, fontSize: 13, color: colors.primary },
+  resendLink: { fontFamily: fontFamily.bold, fontSize: 13, color: colors.accent },
   footer: { paddingHorizontal: spacing.md + 10 },
   trustRow: { flexDirection: 'row', justifyContent: 'center', gap: 22, marginTop: spacing.md + 6, paddingBottom: spacing.md },
   trustItem: { alignItems: 'center', gap: 6 },

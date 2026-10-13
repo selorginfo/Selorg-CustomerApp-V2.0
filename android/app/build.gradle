@@ -22,6 +22,7 @@ react {
     //   skip the bundling of the JS bundle and the assets. By default is just 'debug'.
     //   If you add flavors like lite, prod, etc. you'll have to list your debuggableVariants.
     // debuggableVariants = ["liteDebug", "prodDebug"]
+    debuggableVariants = ["selorgDebug", "sodakkuDebug"]
 
     /* Bundling */
     //   A list containing the node command and its flags. Default is just 'node'.
@@ -72,6 +73,13 @@ def enableProguardInReleaseBuilds = false
  */
 def jscFlavor = 'io.github.react-native-community:jsc-android:2026004.+'
 
+// Sodakku release signing lives in android/keystore-sodakku.properties (gitignored).
+def sodakkuKeystorePropertiesFile = rootProject.file("keystore-sodakku.properties")
+def sodakkuKeystoreProperties = new Properties()
+if (sodakkuKeystorePropertiesFile.exists()) {
+    sodakkuKeystorePropertiesFile.withInputStream { sodakkuKeystoreProperties.load(it) }
+}
+
 android {
     ndkVersion rootProject.ext.ndkVersion
     buildToolsVersion rootProject.ext.buildToolsVersion
@@ -97,18 +105,6 @@ android {
             }
         }
     }
-    // The default staging folder lives under this OneDrive path, so even hashed
-    // object files still exceed Windows' 260-character limit.
-    externalNativeBuild {
-        cmake {
-            buildStagingDirectory "C:/scxx2"
-        }
-    }
-    // Fat debug APK (~200MB) + wireless ADB often exceeds the default ~4min
-    // shell timeout (ShellCommandUnresponsiveException on installDebug).
-    adbOptions {
-        timeOutInMs 15 * 60 * 1000
-    }
     signingConfigs {
         debug {
             storeFile file('debug.keystore')
@@ -122,22 +118,89 @@ android {
             keyAlias 'selorg'
             keyPassword 'selorg'
         }
+        sodakkuRelease {
+            if (sodakkuKeystoreProperties.getProperty('storeFile')) {
+                storeFile file(sodakkuKeystoreProperties.getProperty('storeFile'))
+                storePassword sodakkuKeystoreProperties.getProperty('storePassword')
+                keyAlias sodakkuKeystoreProperties.getProperty('keyAlias')
+                keyPassword sodakkuKeystoreProperties.getProperty('keyPassword')
+            }
+        }
+    }
+    // One flavor per brand. applicationId must match
+    // src/brands/<brand>/native.json (npm run brand:native-check).
+    // Selorg resources, google-services.json and signing stay in main / app root;
+    // a partner brand ships its own under android/app/src/<flavor>/.
+    // Release signing is per flavor: a build-type signingConfig would override it.
+    flavorDimensions "brand"
+    productFlavors {
+        selorg {
+            dimension "brand"
+            applicationId "com.selorg.com"
+            signingConfig signingConfigs.release
+        }
+        sodakku {
+            dimension "brand"
+            applicationId "com.sodakku.com"
+            signingConfig signingConfigs.sodakkuRelease
+        }
+    }
+    // The default staging folder lives under this OneDrive path, so even hashed
+    // object files still exceed Windows' 260-character limit.
+    externalNativeBuild {
+        cmake {
+            buildStagingDirectory "C:/scxx2"
+        }
+    }
+    // Fat debug APK (~200MB) + wireless ADB often exceeds the default ~4min
+    // shell timeout (ShellCommandUnresponsiveException on installDebug).
+    adbOptions {
+        timeOutInMs 15 * 60 * 1000
     }
     buildTypes {
         debug {
             signingConfig signingConfigs.debug
         }
         release {
-            signingConfig signingConfigs.release
             minifyEnabled enableProguardInReleaseBuilds
             proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"
         }
     }
 
     applicationVariants.all { variant ->
+        def artifactBrand = variant.flavorName
         variant.outputs.all { output ->
             def version = variant.versionName
-            outputFileName = "selorg-customer-app-${version}.apk"
+            outputFileName = "${artifactBrand}-customer-app-${version}.apk"
+        }
+
+        // Refuse to bundle one brand's JS / .env into another brand's package.
+        def flavor = variant.flavorName
+        def appRoot = rootProject.projectDir.parentFile
+        tasks.matching { it.name == "createBundle${variant.name.capitalize()}JsAndAssets" }.configureEach { jsTask ->
+            jsTask.doFirst {
+                def toFlavor = { String key -> key.replaceAll(/-([a-z])/) { all, c -> c.toUpperCase() } }
+                def generated = new File(appRoot, "src/brands/active.generated.ts")
+                def active = generated.exists() ? ((generated.text =~ /ACTIVE_BRAND_KEY\s*=\s*'([^']+)'/).with { it.find() ? it.group(1) : null }) : "selorg"
+                if (active == null || toFlavor(active) != flavor) {
+                    throw new GradleException("Active JS brand '${active}' does not match flavor '${flavor}'. Run: npm run brand -- <brand> <mode>")
+                }
+                // Selorg bundles the root .env; a partner bundles env/<brand>/.env.resolved (see scripts/brand-env.js).
+                def dotenv = active == "selorg" ? new File(appRoot, ".env") : new File(appRoot, "env/${active}/.env.resolved")
+                if (active != "selorg" && !dotenv.exists()) {
+                    throw new GradleException("env/${active}/.env.resolved is missing. Run: npm run brand -- ${active} <mode>")
+                }
+                def envBrand = dotenv.exists() ? dotenv.readLines().find { it.trim().startsWith("BRAND_KEY=") }?.split("=", 2)?.getAt(1)?.trim() : null
+                if (envBrand && toFlavor(envBrand) != flavor) {
+                    throw new GradleException("${dotenv.name} BRAND_KEY '${envBrand}' does not match flavor '${flavor}'. Run: npm run brand -- <brand> <mode>")
+                }
+                def activeMode = generated.exists() ? ((generated.text =~ /ACTIVE_BRAND_ENV\s*=\s*'([^']+)'/).with { it.find() ? it.group(1) : null }) : null
+                if (active != "selorg" && variant.buildType.name == "release" && activeMode != "production") {
+                    throw new GradleException("Release ${flavor} build needs production config. Run: npm run brand -- ${active} production")
+                }
+                // The plugin never clears this folder, so a previous brand's images would ship.
+                project.delete(jsTask.resourcesDir.get().asFile)
+            }
         }
 
         tasks.named("bundle${variant.name.capitalize()}").configure { bundleTask ->
@@ -146,7 +209,7 @@ android {
                 def aabDir = new File("${buildDir}/outputs/bundle/${variant.name}")
                 aabDir.listFiles()?.each { file ->
                     if (file.name.endsWith(".aab")) {
-                        file.renameTo(new File(aabDir, "selorg-customer-app-${version}.aab"))
+                        file.renameTo(new File(aabDir, "${artifactBrand}-customer-app-${version}.aab"))
                     }
                 }
             }
@@ -190,3 +253,13 @@ dependencies {
 }
 
 apply plugin: "com.google.gms.google-services"
+
+// A Sodakku release must be signed with the Sodakku upload key, never silently unsigned.
+gradle.taskGraph.whenReady { graph ->
+    if (graph.allTasks.any { it.name.toLowerCase().contains("sodakkurelease") }
+            && !sodakkuKeystorePropertiesFile.exists()) {
+        throw new GradleException(
+            "Missing android/keystore-sodakku.properties - copy keystore-sodakku.properties.example " +
+            "and fill in the Sodakku release signing credentials before building a Sodakku release.")
+    }
+}

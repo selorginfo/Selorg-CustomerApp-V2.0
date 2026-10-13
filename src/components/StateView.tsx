@@ -68,7 +68,7 @@ export default function StateView({
 
   const isError = kind === 'error';
   const iconName = icon || (isError ? 'wifiOff' : 'sparkles');
-  const iconColor = isError ? colors.danger : colors.primary;
+  const iconColor = isError ? colors.danger : colors.accent;
   const useLottie = !!lottieSource;
 
   return (

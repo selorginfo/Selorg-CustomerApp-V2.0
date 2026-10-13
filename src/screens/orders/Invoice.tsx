@@ -12,6 +12,7 @@ import { formatCurrency } from '../../utils/format';
 import { showToast } from '../../utils/toast';
 import { shareInvoicePdf } from '../../utils/invoicePdf';
 import { RootStackParamList } from '../../navigation/types';
+import { brandConfig } from '../../brands';
 
 const PAY_LABEL: Record<string, string> = {
   paid: 'Paid',
@@ -144,7 +145,7 @@ export default function Invoice() {
           <View style={styles.sheet}>
             <View style={styles.topRow}>
               <View>
-                <Text style={styles.brand}>Selorg</Text>
+                <Text style={styles.brand}>{brandConfig.appName}</Text>
                 <Text style={styles.brandSub}>Tax Invoice</Text>
               </View>
               <View style={styles.topRight}>
@@ -186,7 +187,7 @@ export default function Invoice() {
               {order.discount > 0 ? (
                 <View style={styles.billRow}>
                   <Text style={styles.billLabel}>Discount</Text>
-                  <Text style={[styles.billValue, { color: colors.primary }]}>−{formatCurrency(order.discount)}</Text>
+                  <Text style={[styles.billValue, { color: colors.accent }]}>−{formatCurrency(order.discount)}</Text>
                 </View>
               ) : null}
               <View style={styles.billRow}>
@@ -253,7 +254,7 @@ const styles = StyleSheet.create({
     borderBottomColor: colors.border,
     paddingBottom: 14,
   },
-  brand: { fontFamily: fontFamily.bold, fontSize: 18, color: colors.primaryDark },
+  brand: { fontFamily: fontFamily.bold, fontSize: 18, color: colors.accentDark },
   brandSub: { fontFamily: fontFamily.medium, fontSize: 11, color: colors.textMuted, marginTop: 2 },
   topRight: { alignItems: 'flex-end' },
   orderNo: { fontFamily: fontFamily.bold, fontSize: 12.5, color: colors.text },

@@ -7,6 +7,7 @@ import { colors, fontFamily, spacing } from '../../theme';
 import type { RootStackParamList } from '../../navigation/types';
 import { probeConnectivity } from '../../utils/connectivity';
 import { showToast } from '../../utils/toast';
+import { brandConfig } from '../../brands';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -37,7 +38,7 @@ export default function NoInternetScreen() {
           </View>
           <Text style={styles.title}>No internet connection</Text>
           <Text style={styles.message}>
-            We couldn&rsquo;t reach Selorg. Check your connection and try again — your cart is saved.
+            We couldn&rsquo;t reach {brandConfig.appName}. Check your connection and try again — your cart is saved.
           </Text>
         </View>
         <PrimaryButton

@@ -19,6 +19,7 @@ import type { RootStackParamList } from '../../navigation/types';
 import { CountryCodeSheet, Flag, Icon, PrimaryButton, ScreenContainer, isoForCode } from '../../components';
 import { colors, fontFamily, radii, spacing } from '../../theme';
 import { images } from '../../theme/images';
+import { brandColors } from '../../brands';
 import { useAuth } from '../../context/AuthContext';
 import { showToast } from '../../utils/toast';
 import { isValidEmail, isValidIndianMobile } from '../../utils/validation';
@@ -320,7 +321,7 @@ export default function EnterMobileScreen() {
             )}
 
             <View style={styles.trustRow}>
-              <Icon name="shield" size={15} color={colors.primary} />
+              <Icon name="shield" size={15} color={colors.accent} />
               <Text style={styles.trustText}>
                 {signup
                   ? `Mobile verification is required. Code will be sent via ${
@@ -455,7 +456,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary,
   },
   pillLabel: { fontFamily: fontFamily.bold, fontSize: 14, color: colors.textMuted },
-  pillLabelOn: { color: colors.white },
+  pillLabelOn: { color: colors.onPrimary },
   methodToggle: {
     flexDirection: 'row',
     gap: 4,
@@ -474,14 +475,14 @@ const styles = StyleSheet.create({
     bottom: 4,
     borderRadius: radii.sm + 5,
     backgroundColor: colors.white,
-    shadowColor: '#456e29',
+    shadowColor: brandColors.accentShadow,
     shadowOpacity: 0.28,
     shadowRadius: 6,
     shadowOffset: { width: 0, height: 2 },
     elevation: 1,
   },
   methodLabel: { fontFamily: fontFamily.bold, fontSize: 12, color: colors.textMuted },
-  methodLabelOn: { color: colors.primaryDark },
+  methodLabelOn: { color: colors.accentDark },
   field: { marginTop: spacing.sm + 2 },
   fieldLabel: {
     fontFamily: fontFamily.bold,
@@ -525,9 +526,9 @@ const styles = StyleSheet.create({
     marginTop: spacing.sm + 4,
   },
   toggleText: { fontFamily: fontFamily.semibold, fontSize: 13, color: colors.textMuted },
-  toggleLink: { fontFamily: fontFamily.bold, fontSize: 13, color: colors.primaryDark },
+  toggleLink: { fontFamily: fontFamily.bold, fontSize: 13, color: colors.accentDark },
   passwordLinkWrap: { alignSelf: 'center', marginTop: spacing.md },
-  passwordLink: { fontFamily: fontFamily.bold, fontSize: 12.5, color: colors.primary },
+  passwordLink: { fontFamily: fontFamily.bold, fontSize: 12.5, color: colors.accent },
   guestWrap: { alignSelf: 'center', marginTop: spacing.sm + 2 },
   guestText: { fontFamily: fontFamily.bold, fontSize: 12.5, color: colors.textMuted },
 });

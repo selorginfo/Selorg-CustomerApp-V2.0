@@ -110,7 +110,7 @@ export default function AccountScreen() {
   const renderRow = (row: Row) => (
     <Pressable key={row.label} onPress={row.onPress} style={styles.row}>
       <View style={styles.rowIcon}>
-        <Icon name={row.icon} size={20} color={colors.primary} />
+        <Icon name={row.icon} size={20} color={colors.accent} />
       </View>
       <Text style={styles.rowLabel}>{row.label}</Text>
       {row.trailing || <Icon name="chevronRight" size={18} color={colors.textMuted} />}
@@ -136,7 +136,7 @@ export default function AccountScreen() {
         {isGuest ? (
           <View style={styles.guestCard}>
             <View style={styles.avatar}>
-              <Icon name="user" size={26} color={colors.white} />
+              <Icon name="user" size={26} color={colors.onPrimary} />
             </View>
             <View style={styles.guestTextWrap}>
               <Text style={styles.guestTitle}>Guest</Text>
@@ -172,7 +172,7 @@ export default function AccountScreen() {
             {stats.map(s => (
               <Pressable key={s.key} style={styles.statTile} onPress={s.onPress}>
                 <View style={styles.statIcon}>
-                  <Icon name={s.icon} size={19} color={colors.primary} />
+                  <Icon name={s.icon} size={19} color={colors.accent} />
                 </View>
                 <Text style={styles.statLabel}>{s.label}</Text>
                 <Text style={styles.statValue} numberOfLines={1}>{s.value}</Text>
@@ -232,7 +232,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   avatarImg: { width: '100%', height: '100%' },
-  avatarInitial: { fontFamily: fontFamily.bold, fontSize: 24, color: colors.white },
+  avatarInitial: { fontFamily: fontFamily.bold, fontSize: 24, color: colors.onPrimary },
   profileTextWrap: { flex: 1, minWidth: 0 },
   editChip: {
     paddingVertical: 8,
@@ -241,7 +241,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.tint,
     flexShrink: 0,
   },
-  editChipLabel: { fontFamily: fontFamily.bold, fontSize: 12.5, color: colors.primaryDark },
+  editChipLabel: { fontFamily: fontFamily.bold, fontSize: 12.5, color: colors.accentDark },
   statRow: { flexDirection: 'row', justifyContent: 'space-between', gap: 10, marginBottom: spacing.md },
   statTile: {
     flex: 1,
@@ -290,7 +290,7 @@ const styles = StyleSheet.create({
   },
   rowIcon: { width: 24, alignItems: 'center', justifyContent: 'center' },
   rowLabel: { flex: 1, fontFamily: fontFamily.semibold, fontSize: 14.5, color: colors.text },
-  trailingValue: { fontFamily: fontFamily.bold, fontSize: 13.5, color: colors.primary },
+  trailingValue: { fontFamily: fontFamily.bold, fontSize: 13.5, color: colors.accent },
   badge: {
     minWidth: 18,
     height: 18,

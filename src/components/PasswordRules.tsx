@@ -32,7 +32,7 @@ export default function PasswordRules({ password }: Props) {
       {rules.map((r, i) => (
         <View key={i} style={styles.row}>
           <View style={[styles.dot, { backgroundColor: r.ok ? colors.primary : '#DCE0D8' }]}>
-            <Icon name="check" size={11} color={colors.white} strokeWidth={3} />
+            <Icon name="check" size={11} color={r.ok ? colors.onPrimary : colors.white} strokeWidth={3} />
           </View>
           <Text style={[styles.label, { color: r.ok ? colors.text : colors.textMuted }]}>{r.label}</Text>
         </View>

@@ -173,7 +173,7 @@ const styles = StyleSheet.create({
 
   prompt: { fontFamily: fontFamily.bold, fontSize: 14, color: colors.text, textAlign: 'center', marginTop: 22 },
   starRow: { flexDirection: 'row', justifyContent: 'center', gap: 8, marginTop: 14 },
-  ratingLabel: { fontFamily: fontFamily.bold, fontSize: 13, color: colors.primary, textAlign: 'center', height: 18, marginTop: 8 },
+  ratingLabel: { fontFamily: fontFamily.bold, fontSize: 13, color: colors.accent, textAlign: 'center', height: 18, marginTop: 8 },
 
   textCard: {
     marginTop: 20,

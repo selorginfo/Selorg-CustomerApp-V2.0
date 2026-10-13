@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef } from 'react';
 import { Animated, Easing, Modal, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { colors, fontFamily, radii } from '../theme';
+import { brandColors, brandConfig } from '../brands';
 import Icon from './Icon';
 import PrimaryButton from './PrimaryButton';
 
@@ -12,7 +13,7 @@ interface Props {
 }
 
 const CONFETTI_COUNT = 14;
-const CONFETTI_COLORS = ['#2F6B2F', '#8BC34A', '#FFC107', '#FF7043', '#4DD0E1'];
+const CONFETTI_COLORS = [...brandColors.confetti, '#FFC107', '#FF7043', '#4DD0E1'];
 
 /**
  * One-shot "order delivered" celebration.
@@ -127,14 +128,14 @@ export default function DeliveredCelebration({ visible, orderNumber, onRate, onC
               style={[styles.ring, { transform: [{ scale: ringScale }], opacity: ringOpacity }]}
             />
             <Animated.View style={[styles.badge, { transform: [{ scale: badgeScale }] }]}>
-              <Icon name="check" size={44} color={colors.white} strokeWidth={3} />
+              <Icon name="check" size={44} color={colors.onPrimary} strokeWidth={3} />
             </Animated.View>
           </View>
 
           <Animated.View style={{ opacity: copy, transform: [{ translateY: copyShift }] }}>
             <Text style={styles.title}>Delivered!</Text>
             <Text style={styles.message}>
-              Enjoy your order — thanks for shopping fresh with Selorg.
+              Enjoy your order — thanks for shopping fresh with {brandConfig.appName}.
             </Text>
             {orderNumber ? <Text style={styles.orderNo}>#{orderNumber}</Text> : null}
           </Animated.View>

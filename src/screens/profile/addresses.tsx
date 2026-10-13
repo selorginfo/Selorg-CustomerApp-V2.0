@@ -88,7 +88,7 @@ export default function AddressesScreen() {
                   accessibilityLabel={`Select ${a.label} address`}
                   accessibilityState={{ selected: active }}
                 >
-                  <Icon name={a.label === 'Work' ? 'building' : 'home'} size={20} color={colors.primary} />
+                  <Icon name={a.label === 'Work' ? 'building' : 'home'} size={20} color={colors.accent} />
                   <View style={styles.cardBody}>
                     <View style={styles.cardTopRow}>
                       <Text style={styles.cardLabel}>{a.label}</Text>
@@ -167,7 +167,7 @@ const styles = StyleSheet.create({
   flex: { flex: 1 },
   emptyWrap: { flex: 1, justifyContent: 'center' },
   addBtn: { paddingVertical: 8, paddingHorizontal: 12, borderRadius: radii.md, backgroundColor: colors.tint },
-  addBtnLabel: { fontFamily: fontFamily.bold, fontSize: 12.5, color: colors.primaryDark },
+  addBtnLabel: { fontFamily: fontFamily.bold, fontSize: 12.5, color: colors.accentDark },
   scrollContent: { padding: 16 },
   card: {
     backgroundColor: colors.white,
@@ -184,10 +184,10 @@ const styles = StyleSheet.create({
   cardTopRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   cardLabel: { fontFamily: fontFamily.bold, fontSize: 14, color: colors.text },
   defaultBadge: { backgroundColor: colors.tint, borderRadius: 6, paddingVertical: 2, paddingHorizontal: 7 },
-  defaultBadgeLabel: { fontFamily: fontFamily.bold, fontSize: 9.5, color: colors.primary },
+  defaultBadgeLabel: { fontFamily: fontFamily.bold, fontSize: 9.5, color: colors.accent },
   cardAddress: { fontFamily: fontFamily.semibold, fontSize: 12.5, color: colors.textMuted, marginTop: 3, lineHeight: 17 },
   actionsRow: { flexDirection: 'row', gap: 16, marginTop: 10 },
-  actionEdit: { fontFamily: fontFamily.bold, fontSize: 12.5, color: colors.primary },
+  actionEdit: { fontFamily: fontFamily.bold, fontSize: 12.5, color: colors.accent },
   actionDefault: { fontFamily: fontFamily.bold, fontSize: 12.5, color: colors.textMuted },
   actionDelete: { fontFamily: fontFamily.bold, fontSize: 12.5, color: colors.danger },
 });

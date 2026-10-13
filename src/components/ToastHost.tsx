@@ -4,10 +4,10 @@ import { colors, fontFamily, radii } from '../theme';
 import Icon from './Icon';
 import { emitter, ToastPayload } from '../utils/emitter';
 
-const KIND_STYLE: Record<ToastPayload['kind'], { bg: string; icon: 'success' | 'x' | 'bell' }> = {
-  ok: { bg: colors.primary, icon: 'success' },
-  err: { bg: colors.danger, icon: 'x' },
-  info: { bg: colors.text, icon: 'bell' },
+const KIND_STYLE: Record<ToastPayload['kind'], { bg: string; fg: string; icon: 'success' | 'x' | 'bell' }> = {
+  ok: { bg: colors.primary, fg: colors.onPrimary, icon: 'success' },
+  err: { bg: colors.danger, fg: colors.white, icon: 'x' },
+  info: { bg: colors.text, fg: colors.white, icon: 'bell' },
 };
 
 export default function ToastHost() {
@@ -37,8 +37,8 @@ export default function ToastHost() {
   return (
     <View pointerEvents="none" style={styles.overlay}>
       <Animated.View style={[styles.toast, { backgroundColor: style.bg, opacity }]}>
-        <Icon name={style.icon} size={15} color={colors.white} strokeWidth={2.4} />
-        <Text style={styles.msg} numberOfLines={2}>{toast.msg}</Text>
+        <Icon name={style.icon} size={15} color={style.fg} strokeWidth={2.4} />
+        <Text style={[styles.msg, { color: style.fg }]} numberOfLines={2}>{toast.msg}</Text>
       </Animated.View>
     </View>
   );

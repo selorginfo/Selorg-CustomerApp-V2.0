@@ -249,7 +249,7 @@ export function FilterSheet({ visible, onClose, filters, onChange, onReset, resu
                 onPress={() => onChange({ ...filters, availability: on ? null : key })}
               >
                 <View style={[styles.checkbox, on && styles.checkboxOn]}>
-                  {on ? <Icon name="check" size={13} color={colors.white} strokeWidth={3} /> : null}
+                  {on ? <Icon name="check" size={13} color={colors.onPrimary} strokeWidth={3} /> : null}
                 </View>
                 <Text style={styles.availLabel}>{label}</Text>
               </Pressable>
@@ -274,16 +274,16 @@ const styles = StyleSheet.create({
   radioOn: { borderColor: colors.primary },
   radioDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: colors.primary },
 
-  clearAll: { fontFamily: fontFamily.bold, fontSize: 13.5, color: colors.primary },
+  clearAll: { fontFamily: fontFamily.bold, fontSize: 13.5, color: colors.accent },
 
   priceChips: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 14 },
   priceChip: {
-    fontFamily: fontFamily.bold, fontSize: 13, color: colors.primaryDark,
+    fontFamily: fontFamily.bold, fontSize: 13, color: colors.accentDark,
     backgroundColor: colors.tint, borderRadius: 8, paddingVertical: 5, paddingHorizontal: 10, overflow: 'hidden',
   },
   priceBounds: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 6 },
   priceBound: { fontFamily: fontFamily.bold, fontSize: 11, color: colors.textMuted },
-  resetPrice: { fontFamily: fontFamily.bold, fontSize: 12, color: colors.primary, marginTop: 10 },
+  resetPrice: { fontFamily: fontFamily.bold, fontSize: 12, color: colors.accent, marginTop: 10 },
 
   grid3: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   gridCell: { width: '31.5%', minWidth: 0 },
@@ -295,7 +295,7 @@ const styles = StyleSheet.create({
   },
   pillOn: { borderColor: colors.primary, backgroundColor: colors.tint },
   pillLabel: { fontFamily: fontFamily.semibold, fontSize: 12, color: colors.text, textAlign: 'center' },
-  pillLabelOn: { color: colors.primaryDark },
+  pillLabelOn: { color: colors.accentDark },
   ratingPill: {
     paddingVertical: 10, paddingHorizontal: 4, borderRadius: radii.lg, borderWidth: 1.5,
     borderColor: colors.border, backgroundColor: colors.white, alignItems: 'center', gap: 3,
@@ -317,7 +317,7 @@ const styles = StyleSheet.create({
     paddingVertical: 15, borderRadius: radii.xl - 2, backgroundColor: colors.primary,
     alignItems: 'center', justifyContent: 'center',
   },
-  applyLabel: { fontFamily: fontFamily.bold, fontSize: 15, color: colors.white },
+  applyLabel: { fontFamily: fontFamily.bold, fontSize: 15, color: colors.onPrimary },
   resultCount: { fontFamily: fontFamily.bold, fontSize: 12.5, color: colors.textMuted, textAlign: 'center', marginTop: 10 },
 });
 

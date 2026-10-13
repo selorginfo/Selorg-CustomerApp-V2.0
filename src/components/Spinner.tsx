@@ -7,6 +7,6 @@ interface Props {
   color?: string;
 }
 
-export default function Spinner({ size = 28, color = colors.primary }: Props) {
+export default function Spinner({ size = 28, color = colors.accent }: Props) {
   return <ActivityIndicator size={size > 24 ? 'large' : 'small'} color={color} />;
 }

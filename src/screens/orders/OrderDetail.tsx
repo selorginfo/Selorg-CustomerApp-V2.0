@@ -172,7 +172,7 @@ export default function OrderDetail() {
           {order.discount > 0 ? (
             <View style={styles.billRow}>
               <Text style={styles.billLabel}>Discount</Text>
-              <Text style={[styles.billValue, { color: colors.primary }]}>−{formatCurrency(order.discount)}</Text>
+              <Text style={[styles.billValue, { color: colors.accent }]}>−{formatCurrency(order.discount)}</Text>
             </View>
           ) : null}
           <View style={styles.billRow}>

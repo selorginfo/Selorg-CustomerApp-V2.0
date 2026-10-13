@@ -5,11 +5,21 @@
  * Page / surface fills are pure white (#FFFFFF). Soft tint tokens used as
  * section backgrounds are also white so the full app stays consistently white;
  * brand greens remain on buttons, status, and accents.
+ *
+ * Brand tokens come from src/brands/<active>; neutral and semantic scales are
+ * not brand surface and stay fixed.
  */
+import { brandColors } from '../brands';
+
 export const colors = {
-  primary: '#034703',
-  primaryDark: '#023502',
-  primarySoft: '#FFFFFF',
+  primary: brandColors.primary,
+  primaryDark: brandColors.primaryDark,
+  primarySoft: brandColors.primarySoft,
+  /** Foreground on a `primary` fill. */
+  onPrimary: brandColors.onPrimary,
+  /** Brand colour for text and icons on white surfaces. */
+  accent: brandColors.accent,
+  accentDark: brandColors.accentDark,
 
   background: '#FFFFFF',
   card: '#FFFFFF',
@@ -41,8 +51,8 @@ export const colors = {
   statusPending: { c: '#B5741A', bg: '#FAF1DF' },
   statusConfirmed: { c: '#2B6C8C', bg: '#E4F0F6' },
   statusPacking: { c: '#8A5CC0', bg: '#EFE7F8' },
-  statusOnTheWay: { c: '#034703', bg: '#E4F2E8' },
-  statusArrived: { c: '#034703', bg: '#E4F2E8' },
+  statusOnTheWay: { c: brandColors.primary, bg: brandColors.primaryTint },
+  statusArrived: { c: brandColors.primary, bg: brandColors.primaryTint },
   statusDelivered: { c: '#2F7D32', bg: '#EAF1E1' },
   statusCancelled: { c: '#D32F2F', bg: '#FDECEC' },
 } as const;

@@ -2,6 +2,7 @@ import React from 'react';
 import { StyleSheet, View } from 'react-native';
 import Svg, { Circle, Path } from 'react-native-svg';
 import { colors } from '../../theme';
+import { alpha } from '../../theme/palette';
 
 /** Top-down delivery bike used as the moving Google Maps marker. */
 export function RiderMapMarker({ size = 46 }: { size?: number }) {
@@ -33,7 +34,7 @@ const styles = StyleSheet.create({
   halo: {
     ...StyleSheet.absoluteFillObject,
     borderRadius: 999,
-    backgroundColor: 'rgba(3,71,3,0.22)',
+    backgroundColor: alpha(colors.primary, 0.22),
   },
   badge: {
     borderRadius: 999,

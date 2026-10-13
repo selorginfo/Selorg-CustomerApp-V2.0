@@ -78,7 +78,7 @@ export default function TicketDetailScreen() {
                     { borderBottomRightRadius: mine ? 4 : radii.xl, borderBottomLeftRadius: mine ? radii.xl : 4 },
                   ]}
                 >
-                  <Text style={[styles.bubbleText, { color: mine ? colors.white : colors.text }]}>{m.text}</Text>
+                  <Text style={[styles.bubbleText, { color: mine ? colors.onPrimary : colors.text }]}>{m.text}</Text>
                 </View>
                 <Text style={[styles.bubbleTime, { textAlign: mine ? 'right' : 'left' }]}>
                   {new Date(m.ts).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
@@ -106,7 +106,7 @@ export default function TicketDetailScreen() {
               returnKeyType="send"
             />
             <Pressable onPress={onSend} style={styles.sendBtn}>
-              <Icon name="send" size={18} color={colors.white} />
+              <Icon name="send" size={18} color={colors.onPrimary} />
             </Pressable>
           </View>
         )}
@@ -135,7 +135,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: colors.card,
   },
-  reopenLabel: { fontFamily: fontFamily.bold, fontSize: 14, color: colors.primary },
+  reopenLabel: { fontFamily: fontFamily.bold, fontSize: 14, color: colors.accent },
   composer: {
     flexDirection: 'row',
     alignItems: 'center',

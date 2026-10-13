@@ -15,12 +15,13 @@ import { useOrders } from '../../context/OrdersContext';
 import type { PayMethod } from '../../context/OrdersContext';
 import { useWallet } from '../../context/WalletContext';
 import type { RootStackParamList } from '../../navigation/types';
+import { brandConfig } from '../../brands';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
 const METHODS: { id: PayMethod; icon: IconName; title: string }[] = [
   { id: 'online', icon: 'bank', title: 'UPI / Cards' },
-  { id: 'wallet', icon: 'wallet', title: 'Selorg Wallet' },
+  { id: 'wallet', icon: 'wallet', title: `${brandConfig.appName} Wallet` },
   { id: 'cod', icon: 'cash', title: 'Cash on delivery' },
 ];
 
@@ -108,7 +109,7 @@ export default function PaymentScreen() {
   if (payState === 'processing') {
     return (
       <View style={styles.processingWrap}>
-        <ActivityIndicator size="large" color={colors.primary} />
+        <ActivityIndicator size="large" color={colors.accent} />
         <Text style={styles.processingTitle}>Processing your payment…</Text>
         <Text style={styles.processingSub}>
           Creating your order and confirming with the gateway. Don’t close this screen.
@@ -173,7 +174,7 @@ export default function PaymentScreen() {
                 </View>
               ) : (
                 <View style={[styles.radio, active && styles.radioActive]}>
-                  {active ? <Icon name="check" size={11} color={colors.white} strokeWidth={3} /> : null}
+                  {active ? <Icon name="check" size={11} color={colors.onPrimary} strokeWidth={3} /> : null}
                 </View>
               )}
             </Pressable>
@@ -257,7 +258,7 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   insufficientText: { fontFamily: fontFamily.semibold, fontSize: 12.5, color: colors.amber, flex: 1 },
-  topUpLink: { fontFamily: fontFamily.bold, fontSize: 12.5, color: colors.primaryDark },
+  topUpLink: { fontFamily: fontFamily.bold, fontSize: 12.5, color: colors.accentDark },
 
   bottomBar: { padding: 16, paddingTop: 6, backgroundColor: colors.white, borderTopWidth: 1, borderTopColor: colors.border },
 

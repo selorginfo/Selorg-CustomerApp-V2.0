@@ -26,6 +26,7 @@ import { deliveryApi, type DeliveryEstimate } from '../../services/delivery.serv
 import { mmkvStorage } from '../../lib/storage';
 import { storeApi } from '../../services/store.service';
 import type { RootStackParamList } from '../../navigation/types';
+import { brandConfig } from '../../brands';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -40,7 +41,7 @@ const PAY_METHOD_TO_API: Record<PayMethod, string> = {
 
 const PAY_METHODS: { id: PayMethod; icon: IconName; title: string }[] = [
   { id: 'online', icon: 'card', title: 'Pay online' },
-  { id: 'wallet', icon: 'wallet', title: 'Selorg Wallet' },
+  { id: 'wallet', icon: 'wallet', title: `${brandConfig.appName} Wallet` },
   { id: 'cod', icon: 'rupee', title: 'Cash on delivery' },
 ];
 
@@ -270,7 +271,7 @@ export default function CheckoutScreen() {
             accessibilityRole="button"
             accessibilityLabel={hasAddress ? 'Change delivery address' : 'Select delivery address'}
           >
-            <Icon name="pin" size={20} color={colors.primary} />
+            <Icon name="pin" size={20} color={colors.accent} />
             <View style={styles.addressBody} testID="checkout-address-select">
               <Text style={styles.addressTitle}>{hasAddress ? selectedAddress.label : 'Select delivery address'}</Text>
               {hasAddress ? (
@@ -286,16 +287,16 @@ export default function CheckoutScreen() {
 
           <View style={styles.etaCard} testID="checkout-eta">
             <View style={styles.etaIconWrap}>
-              <Icon name="zap" size={18} color={colors.primary} strokeWidth={2.2} />
+              <Icon name="zap" size={18} color={colors.accent} strokeWidth={2.2} />
             </View>
             <View style={styles.etaBody}>
               <View style={styles.etaTitleRow}>
-                <Icon name="clock" size={12} color={colors.primaryDark} strokeWidth={2.2} />
+                <Icon name="clock" size={12} color={colors.accentDark} strokeWidth={2.2} />
                 <Text style={styles.etaTitle}>EXPECTED DELIVERY</Text>
               </View>
               {etaRange ? (
                 <View style={styles.etaTimeRow}>
-                  <Icon name="zap" size={14} color={colors.primaryDark} strokeWidth={2.4} />
+                  <Icon name="zap" size={14} color={colors.accentDark} strokeWidth={2.4} />
                   <Text style={styles.etaTime}>
                     Delivered in {etaRange[0]} to {etaRange[1]} mins
                   </Text>
@@ -336,7 +337,7 @@ export default function CheckoutScreen() {
             hitSlop={4}
           >
             <View style={[styles.checkbox, orderForSomeone && styles.checkboxOn]}>
-              {orderForSomeone ? <Icon name="check" size={13} color={colors.white} strokeWidth={3} /> : null}
+              {orderForSomeone ? <Icon name="check" size={13} color={colors.onPrimary} strokeWidth={3} /> : null}
             </View>
             <Text style={styles.giftLabel}>This order is for someone else</Text>
           </Pressable>
@@ -429,7 +430,7 @@ export default function CheckoutScreen() {
                   ]}
                 >
                   <View style={[styles.methodIcon, on && styles.methodIconOn]}>
-                    <Icon name={m.icon} size={18} color={on ? colors.white : colors.primary} strokeWidth={2} />
+                    <Icon name={m.icon} size={18} color={on ? colors.onPrimary : colors.accent} strokeWidth={2} />
                   </View>
                   <View style={styles.methodBody}>
                     <Text style={styles.methodTitle}>{m.title}</Text>
@@ -445,7 +446,7 @@ export default function CheckoutScreen() {
           <View style={styles.couponWrap}>
             {coupon ? (
               <View style={styles.couponApplied}>
-                <Icon name="tag" size={18} color={colors.primaryDark} />
+                <Icon name="tag" size={18} color={colors.accentDark} />
                 <View style={styles.couponAppliedText}>
                   <Text style={styles.couponAppliedTitle}>{coupon} applied</Text>
                   <Text style={styles.couponAppliedSub}>You saved {formatCurrency(discount)}</Text>
@@ -523,7 +524,7 @@ const styles = StyleSheet.create({
   addressTitle: { fontFamily: fontFamily.bold, fontSize: 13.5, color: colors.text },
   addressSub: { fontFamily: fontFamily.semibold, fontSize: 11.5, color: colors.textMuted, marginTop: 1, lineHeight: 16 },
   addressMissing: { fontFamily: fontFamily.bold, fontSize: 11.5, color: colors.danger, marginTop: 1 },
-  addressAction: { fontFamily: fontFamily.bold, fontSize: 12.5, color: colors.primary, flexShrink: 0 },
+  addressAction: { fontFamily: fontFamily.bold, fontSize: 12.5, color: colors.accent, flexShrink: 0 },
 
   etaCard: {
     marginTop: 10,
@@ -545,7 +546,7 @@ const styles = StyleSheet.create({
   },
   etaBody: { flex: 1, minWidth: 0 },
   etaTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
-  etaTitle: { fontFamily: fontFamily.bold, fontSize: 10.5, color: colors.primaryDark, letterSpacing: 0.4 },
+  etaTitle: { fontFamily: fontFamily.bold, fontSize: 10.5, color: colors.accentDark, letterSpacing: 0.4 },
   etaTimeRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 3 },
   etaTime: { fontFamily: fontFamily.bold, fontSize: 15, color: colors.text, flexShrink: 1 },
   etaSub: { fontFamily: fontFamily.semibold, fontSize: 11.5, color: colors.textMuted, marginTop: 2, lineHeight: 16 },
@@ -627,7 +628,7 @@ const styles = StyleSheet.create({
   },
   tipChipActive: { borderColor: colors.primary, backgroundColor: colors.tint },
   tipLabel: { fontFamily: fontFamily.bold, fontSize: 13, color: colors.textMuted },
-  tipLabelActive: { color: colors.primaryDark },
+  tipLabelActive: { color: colors.accentDark },
 
   methodCard: {
     backgroundColor: colors.white,
@@ -686,7 +687,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  couponApplyLabel: { fontFamily: fontFamily.bold, fontSize: 13.5, color: colors.primaryDark },
+  couponApplyLabel: { fontFamily: fontFamily.bold, fontSize: 13.5, color: colors.accentDark },
   couponApplied: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -699,7 +700,7 @@ const styles = StyleSheet.create({
     padding: 14,
   },
   couponAppliedText: { flex: 1, minWidth: 0 },
-  couponAppliedTitle: { fontFamily: fontFamily.bold, fontSize: 13.5, color: colors.primaryDark },
+  couponAppliedTitle: { fontFamily: fontFamily.bold, fontSize: 13.5, color: colors.accentDark },
   couponAppliedSub: { fontFamily: fontFamily.semibold, fontSize: 11.5, color: colors.textMuted, marginTop: 1 },
   couponRemove: { fontFamily: fontFamily.bold, fontSize: 12.5, color: colors.danger },
 

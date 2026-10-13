@@ -40,12 +40,12 @@ export default function BillSummaryCard() {
       <Text style={styles.title}>Bill details</Text>
       <Row label="Item total" value={formatCurrency(itemTotal)} />
       {discount > 0 ? (
-        <Row label="Coupon discount" value={`− ${formatCurrency(discount)}`} valueColor={colors.primary} />
+        <Row label="Coupon discount" value={`− ${formatCurrency(discount)}`} valueColor={colors.accent} />
       ) : null}
       <Row
         label="Delivery fee"
         value={deliveryFee === 0 ? 'FREE' : formatCurrency(deliveryFee)}
-        valueColor={deliveryFee === 0 ? colors.primary : colors.text}
+        valueColor={deliveryFee === 0 ? colors.accent : colors.text}
       />
       {handlingCharge > 0 ? (
         <Row label="Handling charge" value={formatCurrency(handlingCharge)} />

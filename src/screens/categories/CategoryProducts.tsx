@@ -319,7 +319,7 @@ export default function CategoryProductsScreen() {
                 hitSlop={4}
                 accessibilityLabel="Filters"
               >
-                <Icon name="sort2" size={18} color={activeCount > 0 ? colors.primary : colors.text} strokeWidth={2.2} />
+                <Icon name="sort2" size={18} color={activeCount > 0 ? colors.accent : colors.text} strokeWidth={2.2} />
                 {activeCount > 0 ? (
                   <View style={styles.toolBadge}>
                     <Text style={styles.toolBadgeLabel}>{activeCount}</Text>
@@ -417,7 +417,7 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     textAlign: 'center',
   },
-  sideLabelOn: { fontFamily: fontFamily.bold, color: colors.primaryDark },
+  sideLabelOn: { fontFamily: fontFamily.bold, color: colors.accentDark },
 
   main: { flex: 1, minWidth: 0, paddingLeft: 10, paddingRight: 12 },
   mainHeader: {

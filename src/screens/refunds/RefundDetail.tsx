@@ -7,6 +7,7 @@ import { ScreenContainer, Header, Icon, StateView } from '../../components';
 import { useRefunds } from '../../context/RefundsContext';
 import { formatCurrency } from '../../utils/format';
 import { RootStackParamList } from '../../navigation/types';
+import { brandConfig } from '../../brands';
 
 const STEPS: { key: 'pending' | 'processing' | 'done'; title: string; desc: string }[] = [
   { key: 'pending', title: 'Requested', desc: 'Request received' },
@@ -51,7 +52,7 @@ export default function RefundDetail() {
           <Text style={styles.eyebrow}>REFUND AMOUNT</Text>
           <Text style={styles.amount}>{formatCurrency(refund.amount)}</Text>
           <Text style={styles.method}>
-            To {refund.method === 'wallet' ? 'Selorg Wallet' : 'original payment method'}
+            To {refund.method === 'wallet' ? `${brandConfig.appName} Wallet` : 'original payment method'}
           </Text>
         </View>
 
@@ -87,7 +88,7 @@ export default function RefundDetail() {
                 <View key={step.key} style={styles.timelineRow}>
                   <View style={styles.rail}>
                     <View style={[styles.dot, { backgroundColor: done ? colors.primary : colors.tint }]}>
-                      {done ? <Icon name="check" size={12} color={colors.white} strokeWidth={3} /> : null}
+                      {done ? <Icon name="check" size={12} color={colors.onPrimary} strokeWidth={3} /> : null}
                     </View>
                     {!last ? <View style={[styles.line, { backgroundColor: idx < curIdx ? colors.primary : colors.tint }]} /> : null}
                   </View>

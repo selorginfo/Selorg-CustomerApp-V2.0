@@ -19,11 +19,11 @@ interface Props {
 }
 
 const KIND_STYLES: Record<Kind, { bg: string; fg: string; border?: string }> = {
-  primary: { bg: colors.primary, fg: colors.white },
+  primary: { bg: colors.primary, fg: colors.onPrimary },
   dark: { bg: colors.text, fg: colors.white },
-  ghost: { bg: colors.white, fg: colors.primary, border: colors.border },
+  ghost: { bg: colors.white, fg: colors.accent, border: colors.border },
   danger: { bg: colors.dangerSoft, fg: colors.danger },
-  subtle: { bg: colors.white, fg: colors.primaryDark, border: colors.border },
+  subtle: { bg: colors.white, fg: colors.accentDark, border: colors.border },
 };
 
 export default function PrimaryButton({

@@ -367,7 +367,7 @@ const styles = StyleSheet.create({
   loadMore: { marginTop: 16 },
   recentWrap: { marginBottom: 16 },
   recentHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline' },
-  recentClear: { fontFamily: fontFamily.bold, fontSize: 12.5, color: colors.primary },
+  recentClear: { fontFamily: fontFamily.bold, fontSize: 12.5, color: colors.accent },
   recentChips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   recentChip: {
     flexDirection: 'row',

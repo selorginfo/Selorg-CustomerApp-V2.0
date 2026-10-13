@@ -16,6 +16,8 @@ LogBox.ignoreLogs([
   /setLayoutAnimationEnabledExperimental is currently a no-op/,
 ]);
 
+require('./src/config/assertEnv').assertEnv();
+
 // ─── Firebase background message handler ────────────────────────────────────
 // Must be registered before the app component mounts.
 //

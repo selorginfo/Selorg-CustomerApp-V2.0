@@ -15,7 +15,7 @@ export default function CleanBadges({ items, compact = false }: Props) {
     <View style={styles.wrap}>
       {items.map(label => (
         <View key={label} style={[styles.pill, compact && styles.pillCompact]}>
-          <Icon name="leaf" size={compact ? 10 : 13} color={colors.primary} strokeWidth={2} />
+          <Icon name="leaf" size={compact ? 10 : 13} color={colors.accent} strokeWidth={2} />
           <Text style={[styles.label, compact && styles.labelCompact]}>{label}</Text>
         </View>
       ))}
@@ -37,6 +37,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
   },
   pillCompact: { paddingVertical: 2, paddingHorizontal: 7 },
-  label: { fontFamily: fontFamily.bold, fontSize: 11, color: colors.primaryDark },
+  label: { fontFamily: fontFamily.bold, fontSize: 11, color: colors.accentDark },
   labelCompact: { fontSize: 9.5 },
 });

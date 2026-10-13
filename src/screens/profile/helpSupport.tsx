@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import LoadMoreFooter from '../../components/LoadMoreFooter';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -8,8 +8,24 @@ import { colors, fontFamily, radii, spacing } from '../../theme';
 import { useSupport } from '../../context/SupportContext';
 import type { Ticket } from '../../context/SupportContext';
 import type { RootStackParamList } from '../../navigation/types';
+import { brandConfig } from '../../brands';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
+
+/** +919498050649 -> +91 94980 50649; anything else is shown as stored. */
+function formatPhone(e164: string): string {
+  const m = /^\+91(\d{5})(\d{5})$/.exec(e164);
+  return m ? `+91 ${m[1]} ${m[2]}` : e164;
+}
+
+const CONTACTS = [
+  brandConfig.supportPhone
+    ? { key: 'phone', icon: 'phone' as const, label: 'Call us', value: formatPhone(brandConfig.supportPhone), url: `tel:${brandConfig.supportPhone}` }
+    : null,
+  brandConfig.supportEmail
+    ? { key: 'mail', icon: 'mail' as const, label: 'Email us', value: brandConfig.supportEmail, url: `mailto:${brandConfig.supportEmail}` }
+    : null,
+].filter((c): c is NonNullable<typeof c> => c !== null);
 
 /** Quick-help prompts from the design — each opens a new support ticket. */
 const FAQS = [
@@ -79,6 +95,28 @@ export default function HelpSupportScreen() {
           ))}
         </View>
 
+        {CONTACTS.length > 0 ? (
+          <>
+            <Text style={styles.sectionLabel}>CONTACT US</Text>
+            <View style={styles.faqCard}>
+              {CONTACTS.map((c, i) => (
+                <Pressable
+                  key={c.key}
+                  onPress={() => Linking.openURL(c.url).catch(() => {})}
+                  style={[styles.faqRow, i === CONTACTS.length - 1 && styles.faqRowLast]}
+                >
+                  <Icon name={c.icon} size={18} color={colors.accent} />
+                  <View style={styles.contactTextWrap}>
+                    <Text style={styles.faqLabel}>{c.label}</Text>
+                    <Text style={styles.contactValue}>{c.value}</Text>
+                  </View>
+                  <Icon name="chevronRight" size={16} color={colors.textMuted} strokeWidth={2.4} />
+                </Pressable>
+              ))}
+            </View>
+          </>
+        ) : null}
+
         <Text style={styles.sectionLabel}>YOUR CONVERSATIONS</Text>
         {tickets.length === 0 ? (
           <StateView
@@ -107,7 +145,7 @@ export default function HelpSupportScreen() {
                   </Text>
                 </View>
                 <View style={[styles.statusPill, { backgroundColor: open ? colors.tint : colors.background }]}>
-                  <Text style={[styles.statusLabel, { color: open ? colors.primary : colors.textMuted }]}>
+                  <Text style={[styles.statusLabel, { color: open ? colors.accent : colors.textMuted }]}>
                     {open ? 'Open' : 'Resolved'}
                   </Text>
                 </View>
@@ -141,6 +179,8 @@ const styles = StyleSheet.create({
     borderBottomColor: colors.border,
   },
   faqRowLast: { borderBottomWidth: 0 },
+  contactTextWrap: { flex: 1, minWidth: 0 },
+  contactValue: { fontFamily: fontFamily.medium, fontSize: 12, color: colors.textMuted, marginTop: 2 },
   faqLabel: { flex: 1, minWidth: 0, fontFamily: fontFamily.bold, fontSize: 13.5, color: colors.text },
   content: { padding: spacing.md, paddingBottom: spacing.xl },
   ctaBusy: { opacity: 0.7 },

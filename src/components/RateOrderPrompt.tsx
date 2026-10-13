@@ -144,7 +144,7 @@ const styles = StyleSheet.create({
   },
   starRow: { flexDirection: 'row', justifyContent: 'center', gap: 10, marginTop: 16, marginBottom: 4 },
   label: { fontFamily: fontFamily.bold, fontSize: 12.5, color: colors.textMuted, textAlign: 'center', height: 18 },
-  labelOn: { color: colors.primary },
+  labelOn: { color: colors.accent },
   commentCard: {
     marginTop: 14,
     backgroundColor: colors.white,

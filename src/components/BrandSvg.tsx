@@ -1,5 +1,6 @@
 import React from 'react';
 import { SvgXml } from 'react-native-svg';
+import { brandColors } from '../brands';
 
 const LEAF_MARK_XML = `<svg width="56" height="56" viewBox="0 0 56 56" fill="none" xmlns="http://www.w3.org/2000/svg">
 <path d="M0 28C0 12.536 12.536 0 28 0C43.464 0 56 12.536 56 28C56 43.464 43.464 56 28 56C12.536 56 0 43.464 0 28Z" fill="white" fill-opacity="0.2"></path>
@@ -76,7 +77,15 @@ export function BrandBadge({ size = 260 }: SvgBoxProps) {
   return <SvgXml xml={BADGE_XML} width={size} height={size} />;
 }
 
+const CONFETTI_ART_GREENS = ['#CEFFDA', '#96E8AA', '#A7FABB', '#BFF3CB'];
+const CONFETTI_BRAND_XML = brandColors.confettiArt
+  ? CONFETTI_ART_GREENS.reduce(
+      (xml, green, i) => xml.split(green).join(brandColors.confettiArt![i]),
+      CONFETTI_XML,
+    )
+  : CONFETTI_XML;
+
 /** Soft mint confetti backdrop for success states. */
 export function ConfettiBackground({ width = 350, height = 163 }: SvgBoxProps) {
-  return <SvgXml xml={CONFETTI_XML} width={width} height={height} />;
+  return <SvgXml xml={CONFETTI_BRAND_XML} width={width} height={height} />;
 }

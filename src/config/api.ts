@@ -6,6 +6,7 @@ import {
   DEV_API_BASE_URL as ENV_DEV_API_BASE_URL_DOT,
   PROD_API_BASE_URL as ENV_PROD_API_BASE_URL_DOT,
 } from '@env';
+import { BRAND_KEY } from '../brands';
 
 const ENV_API_BASE_URL = (ENV_API_BASE_URL_DOT as string | undefined)?.trim();
 const ENV_APP_MODE = (ENV_APP_MODE_DOT as string | undefined)
@@ -18,7 +19,9 @@ const ENV_PROD_API_BASE_URL = (
   ENV_PROD_API_BASE_URL_DOT as string | undefined
 )?.trim();
 
-const PROD_FALLBACK_API_BASE_URL = 'https://api.selorg.com/api/v1/customer';
+// Other brands must never fall back to Selorg's production API.
+const PROD_FALLBACK_API_BASE_URL =
+  BRAND_KEY === 'selorg' ? 'https://api.selorg.com/api/v1/customer' : '';
 
 // selorg-service runs on port 3333 in dev and mounts customer routes under
 // /api/v1/customer.

@@ -61,7 +61,7 @@ export default function OrderPlacedScreen() {
       <LinearGradient colors={[colors.white, colors.white]} style={styles.gradient}>
       <View style={styles.content}>
         <View style={styles.badge}>
-          <AnimatedIcon name="check" motion="pop" playOnMount size={48} color={colors.white} strokeWidth={3} />
+          <AnimatedIcon name="check" motion="pop" playOnMount size={48} color={colors.onPrimary} strokeWidth={3} />
         </View>
 
         <Text style={styles.title}>Order placed!</Text>
@@ -115,7 +115,7 @@ const styles = StyleSheet.create({
   },
   title: { fontFamily: fontFamily.bold, fontSize: 24, color: colors.text, marginTop: 8 },
   subtitle: { fontFamily: fontFamily.medium, fontSize: 14, color: colors.textMuted, textAlign: 'center', lineHeight: 20, maxWidth: 260 },
-  thankYou: { fontFamily: fontFamily.bold, fontSize: 15, color: colors.primaryDark, marginTop: 2 },
+  thankYou: { fontFamily: fontFamily.bold, fontSize: 15, color: colors.accentDark, marginTop: 2 },
   choiceCard: {
     backgroundColor: colors.tint,
     borderWidth: 1,

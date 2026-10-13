@@ -68,9 +68,9 @@ export default function OrderTimeline({ order, compact = false }: Props) {
                 ]}
               >
                 {last ? (
-                  <Icon name="pin" size={compact ? 11 : 13} color={done ? colors.white : colors.textMuted} strokeWidth={2.2} />
+                  <Icon name="pin" size={compact ? 11 : 13} color={done ? colors.onPrimary : colors.textMuted} strokeWidth={2.2} />
                 ) : done ? (
-                  <Icon name="check" size={compact ? 11 : 13} color={colors.white} strokeWidth={3} />
+                  <Icon name="check" size={compact ? 11 : 13} color={colors.onPrimary} strokeWidth={3} />
                 ) : (
                   <View style={styles.dotInner} />
                 )}
@@ -112,7 +112,7 @@ const styles = StyleSheet.create({
   labelWrap: { flex: 1, marginLeft: 12, flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' },
   label: { flex: 1, paddingRight: 8 },
   time: { fontFamily: fontFamily.semibold, fontSize: 12, color: colors.text },
-  timeNow: { fontFamily: fontFamily.semibold, fontSize: 11.5, color: colors.primary },
+  timeNow: { fontFamily: fontFamily.semibold, fontSize: 11.5, color: colors.accent },
   cancelledRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   cancelledDot: {
     width: 32,

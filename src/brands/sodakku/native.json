@@ -1,0 +1,7 @@
+{
+  "androidFlavor": "sodakku",
+  "androidApplicationId": "com.sodakku.com",
+  "iosBundleId": "com.sodakku.customerapp",
+  "displayName": "Sodakku",
+  "firebaseProjectId": "sodakku-customer-app"
+}

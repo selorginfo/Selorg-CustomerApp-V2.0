@@ -6,6 +6,7 @@ import { colors, fontFamily, radii, spacing } from '../../theme';
 import { Header, Icon, PrimaryButton, ScreenContainer, SkeletonList, StateView } from '../../components';
 import { catalogApi } from '../../services/catalog.service';
 import type { RootStackParamList } from '../../navigation/types';
+import { brandConfig } from '../../brands';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 type ReviewsRoute = RouteProp<RootStackParamList, 'Reviews'>;
@@ -166,7 +167,7 @@ export default function Reviews() {
         {reviews.length > 0 ? (
           <View style={styles.list}>
             {reviews.map((r, i) => {
-              const name = r.author || r.userName || 'Selorg customer';
+              const name = r.author || r.userName || `${brandConfig.appName} customer`;
               const body = r.comment || r.text || '';
               return (
                 <View key={r.id || r._id || i} style={styles.reviewCard}>
@@ -184,7 +185,7 @@ export default function Reviews() {
                       </View>
                     ) : r.verified !== false ? (
                       <View style={styles.verifiedRow}>
-                        <Icon name="check" size={12} color={colors.primary} strokeWidth={3} />
+                        <Icon name="check" size={12} color={colors.accent} strokeWidth={3} />
                         <Text style={styles.verifiedLabel}>Verified</Text>
                       </View>
                     ) : null}
@@ -255,13 +256,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  avatarInitial: { fontFamily: fontFamily.bold, fontSize: 15, color: colors.primaryDark },
+  avatarInitial: { fontFamily: fontFamily.bold, fontSize: 15, color: colors.accentDark },
   reviewHeadText: { flex: 1, minWidth: 0, gap: 2 },
   reviewName: { fontFamily: fontFamily.bold, fontSize: 13.5, color: colors.text },
   verifiedRow: { flexDirection: 'row', alignItems: 'center', gap: 4, flexShrink: 0 },
-  verifiedLabel: { fontFamily: fontFamily.bold, fontSize: 10, color: colors.primary },
+  verifiedLabel: { fontFamily: fontFamily.bold, fontSize: 10, color: colors.accent },
   youBadge: { backgroundColor: colors.tint, borderRadius: 7, paddingVertical: 3, paddingHorizontal: 8 },
-  youBadgeLabel: { fontFamily: fontFamily.bold, fontSize: 10, color: colors.primary },
+  youBadgeLabel: { fontFamily: fontFamily.bold, fontSize: 10, color: colors.accent },
   reviewBody: {
     fontFamily: fontFamily.semibold,
     fontSize: 13,

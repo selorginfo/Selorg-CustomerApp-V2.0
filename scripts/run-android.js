@@ -2,12 +2,46 @@
  * Reverse Metro ports on connected devices, then install on one target.
  *
  * Override with: ANDROID_SERIAL=<id>   or   DEVICE_ID=<id>
+ * Brand / variant: SELORG_BRAND=selorg (default)   SELORG_VARIANT=Debug (default)
  */
 const { execSync, spawnSync } = require('child_process');
 const path = require('path');
 
 const PORT = Number(process.env.RCT_METRO_PORT || process.env.METRO_PORT || 8082);
 const API_PORT = Number(process.env.SELORG_API_PORT || 3333);
+
+// Gradle flavor names cannot contain hyphens: partner-a -> partnerA.
+const brandArg = (process.argv.find(a => a.startsWith('--brand=')) || '').slice('--brand='.length);
+const BRAND = (brandArg || process.env.SELORG_BRAND || 'selorg').trim();
+const VARIANT = (process.env.SELORG_VARIANT || 'Debug').trim();
+const FLAVOR = BRAND.replace(/-([a-z])/g, (_, c) => c.toUpperCase());
+const MODE = `${FLAVOR}${VARIANT.charAt(0).toUpperCase()}${VARIANT.slice(1)}`;
+
+// Metro serves whichever brand select-brand.js last activated; installing a
+// different brand's native shell would run one brand's JS inside the other's app.
+function assertBrandMatches() {
+  const fs = require('fs');
+  const root = path.join(__dirname, '..');
+  const generated = path.join(root, 'src', 'brands', 'active.generated.ts');
+  const active = fs.existsSync(generated)
+    ? (/ACTIVE_BRAND_KEY\s*=\s*'([^']+)'/.exec(fs.readFileSync(generated, 'utf8')) || [])[1]
+    : 'selorg';
+  if (active !== BRAND) {
+    console.error(
+      `Active JS brand is "${active}" but SELORG_BRAND is "${BRAND}". ` +
+        `Run: npm run brand -- ${BRAND} <mode>   (or set SELORG_BRAND=${active})`,
+    );
+    process.exit(1);
+  }
+  const nativeFile = path.join(root, 'src', 'brands', BRAND, 'native.json');
+  const native = fs.existsSync(nativeFile) ? JSON.parse(fs.readFileSync(nativeFile, 'utf8')) : {};
+  if (!native.androidApplicationId) {
+    console.error(`Brand "${BRAND}" has no Android application ID yet; it cannot be installed.`);
+    process.exit(1);
+  }
+  return native.androidApplicationId;
+}
+const APP_ID = assertBrandMatches();
 
 function listDevices() {
   const out = execSync('adb devices', { encoding: 'utf8' });
@@ -114,7 +148,7 @@ if (!devices.includes(target)) {
   target = pickDevice(devices);
 }
 
-console.log(`Installing on: ${target}`);
+console.log(`Installing ${MODE} on: ${target}`);
 if (devices.length > 1) {
   console.log(`Other devices: ${devices.filter(d => d !== target).join(' | ')}`);
   console.log('Override with: $env:ANDROID_SERIAL="<device-id>"; npm run android');
@@ -127,7 +161,7 @@ const cliPath = require('fs').existsSync(cliJs) ? cliJs : fallbackCli;
 
 const result = spawnSync(
   process.execPath,
-  [cliPath, 'run-android', `--deviceId=${target}`, `--port=${PORT}`],
+  [cliPath, 'run-android', `--mode=${MODE}`, `--appId=${APP_ID}`, `--deviceId=${target}`, `--port=${PORT}`],
   {
     stdio: 'inherit',
     shell: false,

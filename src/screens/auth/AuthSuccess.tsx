@@ -8,6 +8,7 @@ import type { RootStackParamList } from '../../navigation/types';
 import { AnimatedIcon, PrimaryButton, ScreenContainer } from '../../components';
 import { colors, fontFamily, spacing } from '../../theme';
 import { images } from '../../theme/images';
+import { brandConfig } from '../../brands';
 
 export default function AuthSuccessScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
@@ -26,12 +27,12 @@ export default function AuthSuccessScreen() {
       <LinearGradient colors={[colors.white, colors.white]} style={styles.gradient}>
         <View style={styles.body}>
           <View style={styles.checkCircle}>
-            <AnimatedIcon name="check" motion="pop" playOnMount size={46} color={colors.white} strokeWidth={3} />
+            <AnimatedIcon name="check" motion="pop" playOnMount size={46} color={colors.onPrimary} strokeWidth={3} />
           </View>
           <Text style={styles.title}>{signup ? 'Account Created!' : 'Welcome Back!'}</Text>
           <Text style={styles.sub}>
             {signup
-              ? 'Welcome to Selorg. Let’s start your healthy journey.'
+              ? `Welcome to ${brandConfig.appName}. Let’s start your healthy journey.`
               : 'Login successful. Let’s get your groceries.'}
           </Text>
 

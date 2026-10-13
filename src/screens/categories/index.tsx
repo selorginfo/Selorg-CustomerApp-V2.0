@@ -258,7 +258,7 @@ const styles = StyleSheet.create({
   },
   catIcon: { width: '100%', height: '100%' },
   catName: { fontFamily: fontFamily.bold, fontSize: 16.5, color: colors.text, flexShrink: 1 },
-  seeAll: { fontFamily: fontFamily.bold, fontSize: 12.5, color: colors.primary },
+  seeAll: { fontFamily: fontFamily.bold, fontSize: 12.5, color: colors.accent },
   subGrid: { flexDirection: 'row', flexWrap: 'wrap', columnGap: 12, rowGap: 16 },
   // Fluid tile + aspect-ratio thumb: 4 columns hold from 320px up without the
   // image overflowing its cell.

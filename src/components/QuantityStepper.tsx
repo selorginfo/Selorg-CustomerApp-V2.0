@@ -91,7 +91,7 @@ export default function QuantityStepper({
           },
         ]}
       >
-        <Text style={[styles.addLabel, { color: outOfStock ? colors.textMuted : colors.primary }]}>
+        <Text style={[styles.addLabel, { color: outOfStock ? colors.textMuted : colors.accent }]}>
           {outOfStock ? 'OUT' : 'ADD'}
         </Text>
       </Pressable>
@@ -115,7 +115,7 @@ export default function QuantityStepper({
         testID={`${testIDPrefix}-decrement`}
         accessibilityLabel="Decrease quantity"
       >
-        <Icon name="minus" size={isBlock ? 16 : 15} color={colors.white} strokeWidth={2.8} />
+        <Icon name="minus" size={isBlock ? 16 : 15} color={colors.onPrimary} strokeWidth={2.8} />
       </Pressable>
       <Animated.Text
         style={[
@@ -133,7 +133,7 @@ export default function QuantityStepper({
         testID={`${testIDPrefix}-increment`}
         accessibilityLabel="Increase quantity"
       >
-        <Icon name="plus" size={isBlock ? 16 : 15} color={colors.white} strokeWidth={2.8} />
+        <Icon name="plus" size={isBlock ? 16 : 15} color={colors.onPrimary} strokeWidth={2.8} />
       </Pressable>
     </Animated.View>
   );
@@ -170,7 +170,7 @@ const styles = StyleSheet.create({
     fontFamily: fontFamily.bold,
     fontSize: 22,
     lineHeight: 24,
-    color: colors.white,
+    color: colors.onPrimary,
     marginTop: -2,
   },
   soldOutLabel: {
@@ -190,5 +190,5 @@ const styles = StyleSheet.create({
   stepperBlock: { borderRadius: radii.xl - 2, padding: 3 },
   stepperCircle: { borderRadius: radii.round, paddingVertical: 2, paddingHorizontal: 4 },
   stepBtn: { alignItems: 'center', justifyContent: 'center' },
-  qty: { fontFamily: fontFamily.bold, color: colors.white, textAlign: 'center' },
+  qty: { fontFamily: fontFamily.bold, color: colors.onPrimary, textAlign: 'center' },
 });

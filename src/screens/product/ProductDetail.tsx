@@ -36,6 +36,7 @@ import { useAddress } from '../../context/AddressContext';
 import { formatCurrency } from '../../utils/format';
 import { showToast } from '../../utils/toast';
 import type { RootStackParamList } from '../../navigation/types';
+import { brandConfig } from '../../brands';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 type PDPRoute = RouteProp<RootStackParamList, 'ProductDetail'>;
@@ -296,7 +297,11 @@ export default function ProductDetail() {
       const priceText = formatCurrency(price);
       await Share.share({
         title: product.name,
-        message: `${product.name} — ${priceText} on Selorg, India's lab-tested organic grocery app.\nhttps://selorg.com/products/${product._id}`,
+        message:
+          `${product.name} — ${priceText} on ${brandConfig.appName}` +
+          (brandConfig.shareTagline ? `, ${brandConfig.shareTagline}` : '') +
+          '.' +
+          (brandConfig.website ? `\n${brandConfig.website}/products/${product._id}` : ''),
       });
     } catch {
       showToast('Could not open the share sheet', 'err');
@@ -405,7 +410,7 @@ export default function ProductDetail() {
         </View>
 
         <View style={styles.body}>
-          <Text style={styles.brand}>{(product.brand || 'Selorg Organic').toUpperCase()}</Text>
+          <Text style={styles.brand}>{(product.brand || brandConfig.productBrandFallback || brandConfig.appName).toUpperCase()}</Text>
           <Text style={styles.name}>{product.name}</Text>
 
           {rating > 0 ? (
@@ -469,7 +474,7 @@ export default function ProductDetail() {
           {/* Delivery / stock */}
           <View style={styles.infoCard}>
             <View style={styles.infoRow}>
-              <Icon name="truck" size={19} color={colors.primary} strokeWidth={2} />
+              <Icon name="truck" size={19} color={colors.accent} strokeWidth={2} />
               <View style={styles.infoTextWrap}>
                 <Text style={styles.infoTitle}>{copy.delivery || 'Delivery in 20–30 mins'}</Text>
                 {deliverTo ? <Text style={styles.infoSub}>Delivering to {deliverTo}</Text> : null}
@@ -477,12 +482,12 @@ export default function ProductDetail() {
             </View>
             <View style={styles.infoDivider} />
             <View style={styles.infoRow}>
-              <Icon name="check" size={19} color={oos ? colors.danger : colors.primary} strokeWidth={2.6} />
+              <Icon name="check" size={19} color={oos ? colors.danger : colors.accent} strokeWidth={2.6} />
               <Text style={[styles.infoText, oos && styles.infoTextDanger]}>{stockLabel}</Text>
             </View>
             <View style={styles.infoDivider} />
             <View style={styles.infoRow}>
-              <Icon name="check" size={19} color={colors.primary} strokeWidth={2.6} />
+              <Icon name="check" size={19} color={colors.accent} strokeWidth={2.6} />
               <Text style={styles.infoText}>Free delivery on orders above ₹199</Text>
             </View>
           </View>
@@ -493,7 +498,7 @@ export default function ProductDetail() {
             <View style={styles.benefitGrid}>
               {copy.highlights.map(b => (
                 <View key={b} style={styles.benefitCell}>
-                  <Icon name="check" size={15} color={colors.primary} strokeWidth={2.6} />
+                  <Icon name="check" size={15} color={colors.accent} strokeWidth={2.6} />
                   <Text style={styles.benefitLabel} numberOfLines={2}>{b}</Text>
                 </View>
               ))}
@@ -503,7 +508,7 @@ export default function ProductDetail() {
           {/* Clean food promise */}
           <View style={styles.promiseCard}>
             <View style={styles.promiseHead}>
-              <Icon name="leaf" size={15} color={colors.primary} strokeWidth={2} />
+              <Icon name="leaf" size={15} color={colors.accent} strokeWidth={2} />
               <Text style={styles.promiseTitle}>CLEAN FOOD PROMISE</Text>
             </View>
             <CleanBadges items={CLEAN_PROMISE} />
@@ -624,7 +629,7 @@ export default function ProductDetail() {
                           <Icon
                             name={inCart ? 'check' : 'plus'}
                             size={16}
-                            color={rStock === 0 ? '#B7C1B6' : colors.primary}
+                            color={rStock === 0 ? '#B7C1B6' : colors.accent}
                             strokeWidth={2.6}
                           />
                         </Pressable>
@@ -740,13 +745,13 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 6 },
     elevation: 3,
   },
-  offRibbonLabel: { fontFamily: fontFamily.bold, fontSize: 12, color: colors.white },
+  offRibbonLabel: { fontFamily: fontFamily.bold, fontSize: 12, color: colors.onPrimary },
   dots: { position: 'absolute', left: 0, right: 0, bottom: 16, flexDirection: 'row', justifyContent: 'center', gap: 6 },
   dot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#C9D2CB' },
   dotOn: { width: 18, backgroundColor: colors.primary },
 
   body: { paddingHorizontal: spacing.md, paddingTop: 20 },
-  brand: { fontFamily: fontFamily.bold, fontSize: 12, color: colors.primary, letterSpacing: 1 },
+  brand: { fontFamily: fontFamily.bold, fontSize: 12, color: colors.accent, letterSpacing: 1 },
   name: { fontFamily: fontFamily.bold, fontSize: 23, color: colors.text, marginTop: 4, lineHeight: 27 },
   starRow: { flexDirection: 'row', gap: 1 },
   ratingRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8 },
@@ -764,14 +769,14 @@ const styles = StyleSheet.create({
   price: { fontFamily: fontFamily.bold, fontSize: 28, color: colors.text },
   mrp: { fontFamily: fontFamily.medium, fontSize: 16, color: colors.textMuted, textDecorationLine: 'line-through' },
   offPill: { backgroundColor: colors.tint, paddingHorizontal: 9, paddingVertical: 3, borderRadius: radii.md },
-  offPillLabel: { fontFamily: fontFamily.bold, fontSize: 12.5, color: colors.primary },
+  offPillLabel: { fontFamily: fontFamily.bold, fontSize: 12.5, color: colors.accent },
   taxNote: { fontFamily: fontFamily.semibold, fontSize: 11.5, color: colors.textMuted, marginTop: 4 },
 
   section: { marginTop: 20 },
   blockTitle: { fontFamily: fontFamily.bold, fontSize: 13.5, color: colors.text, marginBottom: 10 },
   sectionHeading: { fontFamily: fontFamily.bold, fontSize: 16, color: colors.text, marginBottom: 8 },
   rowBetween: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  seeAllLink: { fontFamily: fontFamily.bold, fontSize: 12.5, color: colors.primary },
+  seeAllLink: { fontFamily: fontFamily.bold, fontSize: 12.5, color: colors.accent },
 
   variantRow: { flexDirection: 'row', gap: 10 },
   variantPill: {
@@ -795,7 +800,7 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   variantLabel: { fontFamily: fontFamily.bold, fontSize: 13, color: colors.text },
-  variantLabelOn: { color: colors.white },
+  variantLabelOn: { color: colors.onPrimary },
   variantSub: { fontFamily: fontFamily.semibold, fontSize: 10, color: colors.textMuted, marginTop: 2 },
   variantSubOn: { color: 'rgba(255,255,255,0.85)' },
 
@@ -828,7 +833,7 @@ const styles = StyleSheet.create({
     paddingVertical: 11,
     paddingHorizontal: 12,
   },
-  benefitLabel: { flex: 1, minWidth: 0, fontFamily: fontFamily.semibold, fontSize: 12, color: colors.primaryDark },
+  benefitLabel: { flex: 1, minWidth: 0, fontFamily: fontFamily.semibold, fontSize: 12, color: colors.accentDark },
 
   promiseCard: {
     marginTop: 16,
@@ -840,7 +845,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
   },
   promiseHead: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 9 },
-  promiseTitle: { fontFamily: fontFamily.bold, fontSize: 12.5, color: colors.primaryDark, letterSpacing: 0.3 },
+  promiseTitle: { fontFamily: fontFamily.bold, fontSize: 12.5, color: colors.accentDark, letterSpacing: 0.3 },
 
   accRow: { borderBottomWidth: 1, borderBottomColor: colors.border },
   accHeader: {

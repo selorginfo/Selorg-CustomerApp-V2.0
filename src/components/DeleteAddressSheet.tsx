@@ -36,7 +36,7 @@ export default function DeleteAddressSheet({
               <Icon
                 name={label === 'Work' ? 'building' : 'home'}
                 size={18}
-                color={colors.primary}
+                color={colors.accent}
               />
             </View>
             <View style={styles.previewText}>

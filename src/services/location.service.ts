@@ -2,6 +2,7 @@ import { Alert, Linking, PermissionsAndroid, Platform } from 'react-native';
 import Geolocation from '@react-native-community/geolocation';
 import { GOOGLE_MAPS_API_KEY } from '@env';
 import { locationsApi } from './locations-api.service';
+import { brandConfig } from '../brands';
 
 /**
  * Mobile port of selorg-web-app/src/services/locationService.ts.
@@ -135,7 +136,7 @@ export function presentLocationFailure(err: unknown) {
   if (code === 'permission_blocked' || code === 'permission_denied' || code === 'PERMISSION_DENIED' || code === 1) {
     Alert.alert(
       code === 'permission_blocked' ? 'Location permission blocked' : 'Location permission needed',
-      'Allow location for Selorg. If the system prompt did not appear, enable location in Settings and try again.',
+      `Allow location for ${brandConfig.appName}. If the system prompt did not appear, enable location in Settings and try again.`,
       [
         { text: 'Not now', style: 'cancel' },
         { text: 'Open Settings', onPress: openAppSettings },

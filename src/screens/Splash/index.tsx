@@ -8,6 +8,7 @@ import { Spinner } from '../../components';
 import { images } from '../../theme/images';
 import { useAuth } from '../../context/AuthContext';
 import { mmkvStorage } from '../../lib/storage';
+import { brandAssets, brandConfig } from '../../brands';
 
 export default function SplashScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
@@ -44,16 +45,28 @@ export default function SplashScreen() {
     return () => clearTimeout(timer);
   }, [isLoading, isAuthenticated, isGuest, onboardingStep, navigation]);
 
+  if (brandAssets.splash) {
+    return (
+      <View style={[styles.artContainer, { backgroundColor: colors.primary }]}>
+        <Image source={brandAssets.splash} style={StyleSheet.absoluteFill} resizeMode="cover" />
+        <View style={styles.artSpinner}>
+          {/* Brand colour would vanish against the artwork's own background. */}
+          <Spinner size={22} color={colors.text} />
+        </View>
+      </View>
+    );
+  }
+
   return (
     <View style={styles.container}>
       <View style={styles.logoBox}>
         <Image source={images.appLogo} style={styles.logo} resizeMode="cover" />
       </View>
-      <Text style={styles.wordmark}>Selorg</Text>
-      <Text style={styles.tagline}>Avoid poison on your plate</Text>
-      <Text style={styles.subtitle}>India&rsquo;s first lab-tested organic grocery app</Text>
+      <Text style={styles.wordmark}>{brandConfig.shortName}</Text>
+      {brandConfig.splashTagline ? <Text style={styles.tagline}>{brandConfig.splashTagline}</Text> : null}
+      {brandConfig.splashSubtitle ? <Text style={styles.subtitle}>{brandConfig.splashSubtitle}</Text> : null}
       <View style={styles.spinnerWrap}>
-        <Spinner size={22} color={colors.primary} />
+        <Spinner size={22} color={colors.accent} />
       </View>
     </View>
   );
@@ -105,4 +118,6 @@ const styles = StyleSheet.create({
     lineHeight: 16,
   },
   spinnerWrap: { marginTop: 14 },
+  artContainer: { flex: 1 },
+  artSpinner: { position: 'absolute', left: 0, right: 0, bottom: 64, alignItems: 'center' },
 });

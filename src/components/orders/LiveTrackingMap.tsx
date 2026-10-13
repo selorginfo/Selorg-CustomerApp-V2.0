@@ -25,6 +25,7 @@ import {
 import { curvedPath, easeOutCubic, headingBetween, lerpLatLng, regionFor } from '../../utils/mapAnim';
 import { RiderMapMarker } from './RiderMapMarker';
 import Icon from '../Icon';
+import { brandConfig } from '../../brands';
 
 export type MapCoord = { latitude: number; longitude: number };
 
@@ -243,7 +244,7 @@ export function LiveTrackingMap({
     return (
       <View style={wrapStyle}>
         <View style={styles.fallback}>
-          <Icon name="pin" size={22} color={colors.primary} />
+          <Icon name="pin" size={22} color={colors.accent} />
           <Text style={styles.fallbackTitle}>Map unavailable</Text>
           <Text style={styles.fallbackSub}>Google Maps native module is not linked in this build.</Text>
         </View>
@@ -258,7 +259,7 @@ export function LiveTrackingMap({
     return (
       <View style={wrapStyle}>
         <View style={styles.fallback}>
-          <Icon name="pin" size={22} color={colors.primary} />
+          <Icon name="pin" size={22} color={colors.accent} />
           <Text style={styles.fallbackTitle}>Waiting for location</Text>
           <Text style={styles.fallbackSub}>Delivery pin appears once the address is confirmed.</Text>
         </View>
@@ -289,9 +290,9 @@ export function LiveTrackingMap({
     <View style={wrapStyle} pointerEvents="box-none">
       <MapView ref={mapRef} {...mapProps}>
         {hub ? (
-          <Marker coordinate={hub} title="Selorg store" identifier="store" anchor={{ x: 0.5, y: 0.5 }}>
+          <Marker coordinate={hub} title={`${brandConfig.appName} store`} identifier="store" anchor={{ x: 0.5, y: 0.5 }}>
             <View style={styles.storePin}>
-              <Icon name="box" size={14} color={colors.white} strokeWidth={2.2} />
+              <Icon name="box" size={14} color={colors.onPrimary} strokeWidth={2.2} />
             </View>
           </Marker>
         ) : null}
@@ -324,7 +325,7 @@ export function LiveTrackingMap({
         {routePoints.length >= 2 ? (
           <Polyline
             coordinates={routePoints}
-            strokeColor={colors.primary}
+            strokeColor={colors.accent}
             strokeWidth={4.5}
             lineCap="round"
             lineJoin="round"

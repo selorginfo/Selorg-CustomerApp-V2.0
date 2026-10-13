@@ -17,7 +17,7 @@ export default function RatingSuccess() {
         </View>
 
         <View style={styles.badge}>
-          <Icon name="star" size={44} color={colors.white} fill={colors.white} strokeWidth={2} />
+          <Icon name="star" size={44} color={colors.onPrimary} fill={colors.onPrimary} strokeWidth={2} />
         </View>
 
         <Text style={styles.title}>Thanks for rating!</Text>

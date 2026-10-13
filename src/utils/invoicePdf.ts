@@ -1,6 +1,7 @@
 import { Platform, Share } from 'react-native';
 import { generatePDF } from 'react-native-html-to-pdf';
 import ReactNativeBlobUtil from 'react-native-blob-util';
+import { brandColors, brandConfig } from '../brands';
 
 export interface InvoicePdfRow {
   name: string;
@@ -56,8 +57,8 @@ function buildHtml(data: InvoicePdfInput): string {
 <style>
   * { box-sizing: border-box; }
   body { font-family: -apple-system, Roboto, Helvetica, Arial, sans-serif; color: #1a1a1a; padding: 28px; }
-  .top { display: flex; justify-content: space-between; border-bottom: 2px solid #14532d; padding-bottom: 12px; }
-  .brand { font-size: 22px; font-weight: 700; color: #14532d; }
+  .top { display: flex; justify-content: space-between; border-bottom: 2px solid ${brandColors.invoiceAccent}; padding-bottom: 12px; }
+  .brand { font-size: 22px; font-weight: 700; color: ${brandColors.invoiceAccent}; }
   .sub { font-size: 11px; color: #666; margin-top: 2px; }
   .right { text-align: right; font-size: 12px; }
   .sec { margin-top: 18px; }
@@ -73,7 +74,7 @@ function buildHtml(data: InvoicePdfInput): string {
   .foot { margin-top: 26px; font-size: 10px; color: #777; border-top: 1px solid #eee; padding-top: 10px; }
 </style></head><body>
   <div class="top">
-    <div><div class="brand">Selorg</div><div class="sub">Tax Invoice</div></div>
+    <div><div class="brand">${esc(brandConfig.appName)}</div><div class="sub">Tax Invoice</div></div>
     <div class="right"><div><strong>#${esc(data.invoiceNumber)}</strong></div><div class="sub">${esc(data.placedDate)}</div></div>
   </div>
 
@@ -124,7 +125,7 @@ export type InvoiceExportResult =
  * download the user can find in their files app.
  */
 export async function shareInvoicePdf(data: InvoicePdfInput): Promise<InvoiceExportResult> {
-  const safeName = `Selorg-${data.invoiceNumber}`.replace(/[^\w-]/g, '-');
+  const safeName = `${brandConfig.appName}-${data.invoiceNumber}`.replace(/[^\w-]/g, '-');
   const fileName = `${safeName}.pdf`;
 
   const { filePath } = await generatePDF({
@@ -148,6 +149,6 @@ export async function shareInvoicePdf(data: InvoicePdfInput): Promise<InvoiceExp
     return { kind: 'saved', fileName };
   }
 
-  await Share.share({ url: `file://${bare}`, title: 'Selorg invoice' });
+  await Share.share({ url: `file://${bare}`, title: `${brandConfig.appName} invoice` });
   return { kind: 'shared', fileName };
 }

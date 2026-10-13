@@ -67,7 +67,7 @@ export default function CountryCodeSheet({ visible, value, onSelect, onClose }: 
               <Text style={[styles.code, on && styles.codeOn]}>{c.code}</Text>
               <Text style={styles.name} numberOfLines={1}>{c.name}</Text>
             </View>
-            {on ? <Icon name="check" size={17} color={colors.primary} strokeWidth={2.6} /> : null}
+            {on ? <Icon name="check" size={17} color={colors.accent} strokeWidth={2.6} /> : null}
           </Pressable>
         );
       })}
@@ -89,6 +89,6 @@ const styles = StyleSheet.create({
   },
   rowLeft: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 12 },
   code: { fontFamily: fontFamily.bold, fontSize: 14, color: colors.text, minWidth: 46 },
-  codeOn: { color: colors.primary },
+  codeOn: { color: colors.accent },
   name: { flex: 1, minWidth: 0, fontFamily: fontFamily.semibold, fontSize: 13.5, color: colors.textMuted },
 });

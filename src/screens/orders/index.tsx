@@ -224,9 +224,9 @@ const styles = StyleSheet.create({
   },
   filterChipOn: { backgroundColor: colors.primary, borderColor: colors.primary },
   filterLabel: { fontFamily: fontFamily.bold, fontSize: 12.5, color: colors.textMuted },
-  filterLabelOn: { color: colors.white },
+  filterLabelOn: { color: colors.onPrimary },
   filterCount: { fontFamily: fontFamily.bold, fontSize: 11, color: colors.textMuted, opacity: 0.85 },
-  filterCountOn: { color: colors.white },
+  filterCountOn: { color: colors.onPrimary },
 
   content: { padding: 16, paddingTop: 8, paddingBottom: 32, gap: 14 },
   flex1: { flex: 1, minWidth: 0 },
@@ -253,7 +253,7 @@ const styles = StyleSheet.create({
   },
   thumb: { width: '80%', height: '80%' },
   moreThumb: { backgroundColor: colors.tint },
-  moreThumbLabel: { fontFamily: fontFamily.bold, fontSize: 12, color: colors.primaryDark },
+  moreThumbLabel: { fontFamily: fontFamily.bold, fontSize: 12, color: colors.accentDark },
   bottomRow: {
     flexDirection: 'row',
     alignItems: 'center',

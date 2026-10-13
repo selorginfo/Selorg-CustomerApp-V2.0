@@ -133,7 +133,7 @@ export default function AvatarUpload({
             },
           ]}
         >
-          <Icon name="imagePlus" size={Math.round(camSize * 0.48)} color={colors.white} strokeWidth={2.2} />
+          <Icon name="imagePlus" size={Math.round(camSize * 0.48)} color={colors.onPrimary} strokeWidth={2.2} />
         </Pressable>
       </Animated.View>
     </Animated.View>
@@ -155,7 +155,7 @@ const styles = StyleSheet.create({
   },
   initial: {
     fontFamily: fontFamily.bold,
-    color: colors.primaryDark,
+    color: colors.accentDark,
   },
   image: {
     width: '100%',

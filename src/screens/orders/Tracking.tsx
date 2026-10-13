@@ -29,6 +29,7 @@ import { getErrorMessage } from '../../utils/apiError';
 import { mmkvStorage } from '../../lib/storage';
 import DeliveredCelebration from '../../components/DeliveredCelebration';
 import { RootStackParamList } from '../../navigation/types';
+import { brandConfig } from '../../brands';
 
 const STEP_ORDER = ['pending', 'confirmed', 'getting-packed', 'on-the-way', 'arrived', 'delivered'];
 /** The design's timeline starts at `confirmed` — "pending" is folded into placement. */
@@ -319,7 +320,7 @@ export default function Tracking() {
               )}
             </View>
             <View style={styles.orderBody}>
-              <Text style={styles.orderTitle}>Selorg Fresh Order</Text>
+              <Text style={styles.orderTitle}>{brandConfig.appName} Fresh Order</Text>
               <Text style={styles.orderIdRow}>
                 <Text style={styles.orderIdLabel}>ID: </Text>
                 <Text style={styles.orderIdValue}>{order.orderNumber}</Text>
@@ -361,10 +362,10 @@ export default function Tracking() {
                 </Text>
               </View>
               <Pressable onPress={handleChat} style={styles.riderChat} hitSlop={4} accessibilityLabel="Chat">
-                <Icon name="chat" size={18} color={colors.white} strokeWidth={2.2} />
+                <Icon name="chat" size={18} color={colors.onPrimary} strokeWidth={2.2} />
               </Pressable>
               <Pressable onPress={handleCallRider} style={styles.riderCall} hitSlop={4} accessibilityLabel="Call">
-                <Icon name="phone" size={18} color={colors.white} strokeWidth={2.2} />
+                <Icon name="phone" size={18} color={colors.onPrimary} strokeWidth={2.2} />
               </Pressable>
             </View>
           ) : null}
@@ -398,9 +399,9 @@ export default function Tracking() {
                     <View style={styles.rail}>
                       <View style={[styles.dot, done && styles.dotOn]}>
                         {last ? (
-                          <Icon name="pin" size={13} color={done ? colors.white : '#B7C1B6'} strokeWidth={2.2} />
+                          <Icon name="pin" size={13} color={done ? colors.onPrimary : '#B7C1B6'} strokeWidth={2.2} />
                         ) : done ? (
-                          <Icon name="check" size={13} color={colors.white} strokeWidth={3} />
+                          <Icon name="check" size={13} color={colors.onPrimary} strokeWidth={3} />
                         ) : (
                           <View style={styles.dotInner} />
                         )}
@@ -558,7 +559,7 @@ const styles = StyleSheet.create({
   orderIdValue: { fontFamily: fontFamily.bold, fontSize: 11.5, color: colors.textMuted },
   orderMetaRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginTop: 5 },
   orderItems: { fontFamily: fontFamily.semibold, fontSize: 12, color: colors.textMuted },
-  orderStatus: { fontFamily: fontFamily.bold, fontSize: 12.5, color: colors.primary },
+  orderStatus: { fontFamily: fontFamily.bold, fontSize: 12.5, color: colors.accent },
   orderStatusCancelled: { color: colors.danger },
 
   riderRow: {

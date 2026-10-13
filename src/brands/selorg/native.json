@@ -1,0 +1,7 @@
+{
+  "androidFlavor": "selorg",
+  "androidApplicationId": "com.selorg.com",
+  "iosBundleId": "com.selorg.com",
+  "displayName": "Selorg",
+  "firebaseProjectId": "selorg-15948"
+}

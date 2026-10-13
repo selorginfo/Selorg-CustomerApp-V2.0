@@ -104,14 +104,14 @@ export default function CartScreen() {
 
         <View style={styles.cleanSection}>
           <View style={styles.cleanHeader}>
-            <Icon name="leaf" size={16} color={colors.primary} strokeWidth={2} />
+            <Icon name="leaf" size={16} color={colors.accent} strokeWidth={2} />
             <Text style={styles.cleanTitle}>CLEAN FOOD PROMISE</Text>
           </View>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.cleanRow}>
             {CLEAN_TAGS.map(({ icon, label }, idx) => (
               <View key={label + idx} style={styles.cleanChip}>
                 <View style={styles.cleanIconWrap}>
-                  <Icon name={icon} size={15} color={colors.primary} strokeWidth={2.2} />
+                  <Icon name={icon} size={15} color={colors.accent} strokeWidth={2.2} />
                 </View>
                 <Text style={styles.cleanLabel}>{label}</Text>
               </View>
@@ -122,7 +122,7 @@ export default function CartScreen() {
         <View style={styles.couponWrap}>
           {coupon ? (
             <View style={styles.couponApplied}>
-              <Icon name="tag" size={18} color={colors.primaryDark} />
+              <Icon name="tag" size={18} color={colors.accentDark} />
               <View style={styles.couponAppliedText}>
                 <Text style={styles.couponAppliedTitle}>{coupon} applied</Text>
                 <Text style={styles.couponAppliedSub}>You saved {formatCurrency(discount)}</Text>
@@ -212,7 +212,7 @@ const styles = StyleSheet.create({
 
   cleanSection: { marginTop: 16 },
   cleanHeader: { flexDirection: 'row', alignItems: 'center', gap: 7, paddingHorizontal: 16, marginBottom: 8 },
-  cleanTitle: { fontFamily: fontFamily.bold, fontSize: 12, color: colors.primaryDark, letterSpacing: 0.4 },
+  cleanTitle: { fontFamily: fontFamily.bold, fontSize: 12, color: colors.accentDark, letterSpacing: 0.4 },
   cleanRow: { gap: 10, paddingHorizontal: 16, paddingBottom: 4 },
   // This screen's sections pad themselves, so the bill card needs its own gutter.
   billWrap: { paddingHorizontal: 16 },
@@ -259,7 +259,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  couponApplyLabel: { fontFamily: fontFamily.bold, fontSize: 13.5, color: colors.primaryDark },
+  couponApplyLabel: { fontFamily: fontFamily.bold, fontSize: 13.5, color: colors.accentDark },
   couponApplied: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -272,7 +272,7 @@ const styles = StyleSheet.create({
     padding: 14,
   },
   couponAppliedText: { flex: 1 },
-  couponAppliedTitle: { fontFamily: fontFamily.bold, fontSize: 13.5, color: colors.primaryDark },
+  couponAppliedTitle: { fontFamily: fontFamily.bold, fontSize: 13.5, color: colors.accentDark },
   couponAppliedSub: { fontFamily: fontFamily.semibold, fontSize: 11.5, color: colors.textMuted, marginTop: 1 },
   couponRemove: { fontFamily: fontFamily.bold, fontSize: 12.5, color: colors.danger },
 
