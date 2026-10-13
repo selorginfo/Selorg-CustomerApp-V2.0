@@ -99,7 +99,7 @@ export default function HomeScreen() {
   const cart = useCart();
   const wishlist = useWishlist();
   const { activeOrder, refreshActiveOrder } = useOrders();
-  const { unreadCount } = useNotifications();
+  const { unreadCount, refresh: refreshNotifications } = useNotifications();
   const { isAuthenticated } = useAuth();
   const { selectedAddress } = useAddress();
   const etaText = useDeliveryEta();
@@ -118,6 +118,7 @@ export default function HomeScreen() {
       const [cats, resolved] = await Promise.all([
         loadHomeCategories(home),
         resolveHomeSections(home),
+        isAuthenticated ? refreshNotifications() : Promise.resolve(),
       ]);
       setCategories(cats);
       setSections(resolved);
@@ -132,7 +133,7 @@ export default function HomeScreen() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [isAuthenticated, refreshNotifications]);
 
   useEffect(() => {
     load();
