@@ -133,7 +133,8 @@ describe('env guard', () => {
           PAYMENT_API_BASE_URL: 'https://api.selorg.com',
         },
       });
-      expect(problems.join('\n')).toContain('DEV_API_BASE_URL, PROD_API_BASE_URL, PAYMENT_API_BASE_URL');
+      expect(problems.join('\n')).toContain('DEV_API_BASE_URL, PROD_API_BASE_URL');
+      expect(problems.join('\n')).not.toContain('PAYMENT_API_BASE_URL');
     }
   });
 

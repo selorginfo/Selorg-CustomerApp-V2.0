@@ -12,7 +12,9 @@ const SCRIPTS = path.join(__dirname, '..', 'scripts');
 const SELORG_ENV = [
   'APP_MODE=development',
   'PAYMENT_STANDALONE_MODE=false',
+  'PAYMENT_API_BASE_URL=https://api.selorg.com',
   'GOOGLE_MAPS_API_KEY=selorg-maps-key',
+  'EXPO_PUBLIC_GOOGLE_MAPS_API_KEY=selorg-maps-key',
   'EAS_PROJECT_ID=selorg-eas',
   'API_BASE_URL=https://dev-api.selorg.com/api/v1/customer',
   'DEV_API_BASE_URL=https://dev-api.selorg.com/api/v1/customer',
@@ -63,15 +65,19 @@ describe('select-brand for a partner', () => {
     expect(resolved.BRAND_KEY).toBe('sodakku');
     expect(resolved.PROD_API_BASE_URL).toBe('https://api.sodakku.example/api/v1/customer');
     expect(resolved.GOOGLE_MAPS_API_KEY).toBe('sodakku-maps-key');
+    expect(resolved.PAYMENT_API_BASE_URL).toBe('https://api.selorg.com');
     expect(read(root, 'src/brands/active.generated.ts')).toContain("ACTIVE_BRAND_KEY = 'sodakku'");
   });
 
-  it('inherits only brand-neutral keys from Selorg, never origins, Maps or project ids', () => {
+  it('inherits Maps and the payment API from Selorg, never customer origins or project ids', () => {
     const root = project({ sodakkuProd: 'BRAND_KEY=sodakku\nAPP_MODE=production\nPROD_API_BASE_URL=https://api.sodakku.example/api/v1/customer\n' });
     expect(run(root, 'sodakku', 'production').status).toBe(0);
     const resolved = brandEnv.parseEnv(read(root, 'env/sodakku/.env.resolved'));
     expect(resolved.PAYMENT_STANDALONE_MODE).toBe('false');
-    for (const k of ['GOOGLE_MAPS_API_KEY', 'EAS_PROJECT_ID', 'API_BASE_URL', 'DEV_API_BASE_URL']) expect(resolved[k]).toBeUndefined();
+    expect(resolved.GOOGLE_MAPS_API_KEY).toBe('selorg-maps-key');
+    expect(resolved.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY).toBe('selorg-maps-key');
+    expect(resolved.PAYMENT_API_BASE_URL).toBe('https://api.selorg.com');
+    for (const k of ['EAS_PROJECT_ID', 'API_BASE_URL', 'DEV_API_BASE_URL']) expect(resolved[k]).toBeUndefined();
   });
 
   it('a blank value counts as missing and is not inherited unless brand-neutral', () => {
@@ -90,7 +96,7 @@ describe('select-brand for a partner', () => {
     const res = run(root, 'sodakku', 'production');
     expect(res.status).toBe(1);
     expect(res.stderr).toContain('PROD_API_BASE_URL points at a Selorg host');
-    expect(res.stderr).toContain('GOOGLE_MAPS_API_KEY reuses the Selorg value');
+    expect(res.stderr).not.toContain('GOOGLE_MAPS_API_KEY reuses the Selorg value');
     expect(res.stderr).not.toContain('selorg-maps-key');
     expect(res.stderr).not.toContain('api.selorg.com');
   });

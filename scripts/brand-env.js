@@ -5,8 +5,9 @@
  * `env/<brand>/.env.<mode>` and the result is written to `env/<brand>/.env.resolved`
  * (gitignored); the root `.env` is never written for a partner.
  *
- * A partner only inherits a Selorg value for names in SPEC.shareable. Everything else
- * — API origins, payment hosts, Maps keys, project ids — must come from the partner file.
+ * A partner only inherits a Selorg value for names in SPEC.shareable. Customer API
+ * origins must be the partner's own host. Maps keys and the payment API are shared
+ * with Selorg. Everything else must come from the partner file.
  * Errors name keys only, never values.
  */
 const fs = require('fs');
@@ -16,27 +17,29 @@ const DEFAULT_BRAND = 'selorg';
 const MODES = ['development', 'qa', 'staging', 'production'];
 
 const SPEC = {
-  /** Brand-neutral behaviour flags; safe to take from Selorg when blank. */
-  shareable: ['APP_MODE', 'APP_ENV', 'PAYMENT_STANDALONE_MODE'],
+  /**
+   * Taken from Selorg when the partner file leaves them blank. Maps and the payment
+   * API stay on Selorg; the customer API host does not.
+   */
+  shareable: [
+    'APP_MODE',
+    'APP_ENV',
+    'PAYMENT_STANDALONE_MODE',
+    'PAYMENT_API_BASE_URL',
+    'GOOGLE_MAPS_API_KEY',
+    'EXPO_PUBLIC_GOOGLE_MAPS_API_KEY',
+  ],
   /** Per mode, at least one name of each group must be set (src/config/api.ts reads them in this order). */
   requiredAnyOf: {
     production: [['PROD_API_BASE_URL', 'API_BASE_URL']],
     default: [['DEV_API_BASE_URL', 'API_BASE_URL']],
   },
-  /** Must not equal Selorg's value. */
-  brandSpecific: [
-    'API_BASE_URL',
-    'DEV_API_BASE_URL',
-    'PROD_API_BASE_URL',
-    'PAYMENT_API_BASE_URL',
-    'GOOGLE_MAPS_API_KEY',
-    'EXPO_PUBLIC_GOOGLE_MAPS_API_KEY',
-    'EAS_PROJECT_ID',
-  ],
-  /** Origins that must never point at a Selorg host. */
-  hostKeys: ['API_BASE_URL', 'DEV_API_BASE_URL', 'PROD_API_BASE_URL', 'PAYMENT_API_BASE_URL'],
-  /** Origins that must be public https in a production build. */
-  productionHostKeys: ['API_BASE_URL', 'PROD_API_BASE_URL', 'PAYMENT_API_BASE_URL'],
+  /** Customer API origins must not equal Selorg's. Maps and payment are shareable. */
+  brandSpecific: ['API_BASE_URL', 'DEV_API_BASE_URL', 'PROD_API_BASE_URL', 'EAS_PROJECT_ID'],
+  /** Customer API origins that must never point at a Selorg host. Payment may. */
+  hostKeys: ['API_BASE_URL', 'DEV_API_BASE_URL', 'PROD_API_BASE_URL'],
+  /** Customer API origins that must be public https in a production build. */
+  productionHostKeys: ['API_BASE_URL', 'PROD_API_BASE_URL'],
 };
 
 const SELORG_HOST = /(^|[./@])selorg\.(com|in)(?=$|[/:?#])/i;

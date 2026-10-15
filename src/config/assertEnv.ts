@@ -10,7 +10,8 @@ import { ACTIVE_BRAND_REQUESTED, BRAND_KEY as ACTIVE } from '../brands';
 
 const LAN_HOST = /localhost|127\.0\.0\.1|10\.0\.2\.2|192\.168\./;
 const SELORG_HOST = /^https?:\/\/([^/?#]*\.)?selorg\.com(?=[:/?#]|$)/i;
-const URL_KEYS = ['API_BASE_URL', 'DEV_API_BASE_URL', 'PROD_API_BASE_URL', 'PAYMENT_API_BASE_URL'] as const;
+const CUSTOMER_URL_KEYS = ['API_BASE_URL', 'DEV_API_BASE_URL', 'PROD_API_BASE_URL'] as const;
+const URL_KEYS = [...CUSTOMER_URL_KEYS, 'PAYMENT_API_BASE_URL'] as const;
 
 export type EnvInput = {
   activeBrand: string;
@@ -21,8 +22,8 @@ export type EnvInput = {
 /**
  * Selorg production may omit the URL because `src/config/api.ts` falls back to
  * Selorg's own API. Any other brand must set it, must declare BRAND_KEY, and may
- * not point at a Selorg host — a copied Selorg env would otherwise send its
- * traffic to Selorg.
+ * not point its customer API at a Selorg host. Maps and the payment API may stay
+ * on Selorg. A copied customer API would otherwise send Sodakku traffic to Selorg.
  */
 export function envProblems({ activeBrand, requestedBrand, env }: EnvInput): string[] {
   const read = (k: keyof EnvInput['env']) => (env[k] ?? '').trim();
@@ -43,7 +44,7 @@ export function envProblems({ activeBrand, requestedBrand, env }: EnvInput): str
   }
 
   if (partner) {
-    const selorgKeys = URL_KEYS.filter(k => SELORG_HOST.test(read(k)));
+    const selorgKeys = CUSTOMER_URL_KEYS.filter(k => SELORG_HOST.test(read(k)));
     if (selorgKeys.length) {
       problems.push(`Brand "${activeBrand}" must not use Selorg API hosts. Replace: ${selorgKeys.join(', ')}`);
     }
