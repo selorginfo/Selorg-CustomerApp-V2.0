@@ -57,7 +57,7 @@ react {
 /**
  * Set this to true to Run Proguard on Release builds to minify the Java bytecode.
  */
-def enableProguardInReleaseBuilds = false
+def enableProguardInReleaseBuilds = true
 
 /**
  * The preferred build flavor of JavaScriptCore (JSC)
@@ -84,8 +84,11 @@ android {
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 5
         versionName "2.0.0"
-        // RN manifest merge previously referenced ${usesCleartextTraffic} without a value — enforce LAN HTTP for dev API.
-        manifestPlaceholders = [usesCleartextTraffic: "true"]
+        // Release denies cleartext. The debug build type overrides this.
+        manifestPlaceholders = [
+            usesCleartextTraffic: "false",
+            GOOGLE_MAPS_API_KEY: project.findProperty("GOOGLE_MAPS_API_KEY") ?: ""
+        ]
         // Ninja rejects object paths of 260+ characters. CMake only hashes an
         // object name when this limit is above the object-directory length plus
         // the source filename, and below that directory length plus the full
@@ -117,18 +120,33 @@ android {
             keyPassword 'android'
         }
         release {
-            storeFile file('selorg-customer-app-keystore.jks')
-            storePassword 'selorg'
-            keyAlias 'selorg'
-            keyPassword 'selorg'
+            // Passwords live in ~/.gradle/gradle.properties or CI, never in this file.
+            // SELORG_UPLOAD_STORE_FILE, SELORG_UPLOAD_STORE_PASSWORD,
+            // SELORG_UPLOAD_KEY_ALIAS, SELORG_UPLOAD_KEY_PASSWORD
+            def storePath = project.findProperty("SELORG_UPLOAD_STORE_FILE")
+            def storePass = project.findProperty("SELORG_UPLOAD_STORE_PASSWORD")
+            def uploadAlias = project.findProperty("SELORG_UPLOAD_KEY_ALIAS")
+            def uploadPass = project.findProperty("SELORG_UPLOAD_KEY_PASSWORD")
+            if (storePath && storePass && uploadAlias && uploadPass) {
+                storeFile file(storePath)
+                storePassword storePass
+                keyAlias uploadAlias
+                keyPassword uploadPass
+            }
         }
     }
     buildTypes {
         debug {
             signingConfig signingConfigs.debug
+            manifestPlaceholders = [
+                usesCleartextTraffic: "true",
+                GOOGLE_MAPS_API_KEY: project.findProperty("GOOGLE_MAPS_API_KEY") ?: ""
+            ]
         }
         release {
-            signingConfig signingConfigs.release
+            if (signingConfigs.release.storeFile) {
+                signingConfig signingConfigs.release
+            }
             minifyEnabled enableProguardInReleaseBuilds
             proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"
         }

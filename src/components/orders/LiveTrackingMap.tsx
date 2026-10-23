@@ -165,9 +165,12 @@ export function LiveTrackingMap({
     setTracksChanges(true);
     const id = setTimeout(() => setTracksChanges(false), 1100);
     return () => clearTimeout(id);
+    // The marker redraws from these coordinates. Depending on riderTarget itself restarts the animation every GPS tick.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [riderTarget?.latitude, riderTarget?.longitude]);
 
   const routeOrigin = riderTarget ?? hub;
+  const hasRider = riderTarget != null;
 
   useEffect(() => {
     didFit.current = false;
@@ -234,7 +237,7 @@ export function LiveTrackingMap({
     hub?.latitude,
     hub?.longitude,
     route?.fromProvider,
-    Boolean(riderTarget),
+    hasRider,
   ]);
 
   const wrapStyle: StyleProp<ViewStyle> = [styles.wrap, { height }, style];

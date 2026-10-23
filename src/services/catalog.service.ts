@@ -1,6 +1,18 @@
 import SelorgApi from '../api';
+import { mmkvStorage } from '../lib/storage';
 import { unwrapApiData, unwrapApiList } from '../utils/apiResponse';
 import { normalizeCategory, normalizeProduct } from '../utils/catalogMappers';
+
+/** Dark store chosen by `/store/assign`. Catalog stock is scoped to this store. */
+function servingStoreId(explicit?: string): string | undefined {
+  const id = (explicit || mmkvStorage.getItem('assignedStoreId') || '').trim();
+  return id || undefined;
+}
+
+function withStore(query?: object, explicit?: string): Record<string, unknown> {
+  const storeId = servingStoreId(explicit);
+  return { ...(query || {}), ...(storeId ? { storeId } : {}) };
+}
 
 /**
  * Catalog: products, categories, home content.
@@ -101,7 +113,7 @@ export const catalogApi = {
     page?: number;
     limit?: number;
   }): Promise<SearchResult> => {
-    const res = await SelorgApi.get('/products/search', { query: params });
+    const res = await SelorgApi.get('/products/search', { query: withStore(params) });
     const data = unwrapApiData<Record<string, unknown>>(res);
     const products = mapProducts(data?.products ?? data);
     const pagination = (data?.pagination ?? data?.meta) as SearchResult['meta'];
@@ -125,7 +137,7 @@ export const catalogApi = {
   },
 
   getProductDetail: async (id: string, storeId?: string): Promise<ApiProductDetail> => {
-    const res = await SelorgApi.get(`/products/${id}`, { query: storeId ? { storeId } : undefined });
+    const res = await SelorgApi.get(`/products/${id}`, { query: withStore(undefined, storeId) });
     const data = unwrapApiData<Record<string, unknown>>(res);
     const product = data?.product ? normalizeProduct(data.product as Record<string, unknown>) : undefined;
     const variants = Array.isArray(data?.variants) ? data.variants : [];
@@ -156,7 +168,7 @@ export const catalogApi = {
     slug: string,
     params?: { page?: number; limit?: number; subcategory?: string },
   ): Promise<SearchResult> => {
-    const res = await SelorgApi.get(`/categories/${slug}/products`, { query: params });
+    const res = await SelorgApi.get(`/categories/${slug}/products`, { query: withStore(params) });
     const data = unwrapApiData<Record<string, unknown>>(res);
     const products = mapProducts(data?.products ?? data);
     const pagination = data?.pagination as SearchResult['meta'];
@@ -196,7 +208,7 @@ export const catalogApi = {
   // ── Collections ─────────────────────────────────────────────────────────
 
   getCollection: async (slug: string, params?: { page?: number; limit?: number }): Promise<CollectionPayload> => {
-    const res = await SelorgApi.get(`/collections/${slug}`, { query: params });
+    const res = await SelorgApi.get(`/collections/${slug}`, { query: withStore(params) });
     const data = unwrapApiData<Record<string, unknown>>(res);
     return {
       title: (data?.name as string) || (data?.title as string),
@@ -234,7 +246,7 @@ export const catalogApi = {
 
     try {
       const res = await SelorgApi.get(`/sections/${encodeURIComponent(key)}/products`, {
-        query: params,
+        query: withStore(params),
       });
       const data = unwrapApiData<Record<string, unknown>>(res);
       return {

@@ -13,6 +13,37 @@ import { colors, fontFamily } from '../theme';
 import { buildPaynimoCheckoutHtml } from '../utils/paynimoCheckout';
 import { hasWorldlineGatewayPayload, isWorldlineReturnUrl, parseReturnUrl } from '../utils/worldline';
 
+const UPI_SCHEMES = ['upi:', 'phonepe:', 'paytmmp:', 'tez:', 'gpay:'];
+const UPI_INTENT_PACKAGES = [
+  'com.google.android.apps.nbu.paisa.user',
+  'com.phonepe.app',
+  'net.one97.paytm',
+  'in.org.npci.upiapp',
+];
+const PAYMENT_HOST_SUFFIXES = ['paynimo.com', 'worldline.com', 'tpsl-india.in'];
+
+function hostOf(url: string): string {
+  const match = url.match(/^https?:\/\/([^/:?#]+)/i);
+  return (match?.[1] || '').toLowerCase();
+}
+
+function isPaymentPage(url: string, returnUrl?: string | null): boolean {
+  if (/^(about|data|blob|javascript):/i.test(url)) return true;
+  const host = hostOf(url);
+  if (!host) return false;
+  if (PAYMENT_HOST_SUFFIXES.some(suffix => host === suffix || host.endsWith(`.${suffix}`))) return true;
+  const returnHost = returnUrl ? hostOf(returnUrl) : '';
+  return Boolean(returnHost) && host === returnHost;
+}
+
+function allowedUpiUrl(url: string): boolean {
+  const lower = url.trim().toLowerCase();
+  if (UPI_SCHEMES.some(scheme => lower.startsWith(scheme))) return true;
+  if (!lower.startsWith('intent:')) return false;
+  const packageName = lower.match(/;package=([^;]+)/)?.[1] || '';
+  return UPI_INTENT_PACKAGES.includes(packageName);
+}
+
 export interface WorldlineCheckoutProps {
   visible: boolean;
   /** Paynimo session payload from selorg-service (preferred). */
@@ -113,11 +144,13 @@ export default function WorldlineCheckoutWebView({
         onHttpError={() => setLoading(false)}
         onNavigationStateChange={onNavigationStateChange}
         onShouldStartLoadWithRequest={req => {
-          // UPI intents (upi://, phonepe://, tez://, intent://…) must open the payment app, not load in the WebView.
           if (!/^(https?|about|data|blob|javascript):/i.test(req.url)) {
-            Linking.openURL(req.url).catch(() => setLoading(false));
+            if (allowedUpiUrl(req.url)) {
+              Linking.openURL(req.url).catch(() => setLoading(false));
+            }
             return false;
           }
+          if (!isPaymentPage(req.url, redirectUrl) && !isWorldlineReturnUrl(req.url)) return false;
           if (isWorldlineReturnUrl(req.url)) {
             const parsed = parseReturnUrl(req.url);
             const hasResult =
@@ -143,8 +176,8 @@ export default function WorldlineCheckoutWebView({
         startInLoadingState
         javaScriptEnabled
         domStorageEnabled
-        originWhitelist={['*']}
-        mixedContentMode="always"
+        originWhitelist={['https://*', 'about:blank']}
+        mixedContentMode="never"
       />
     </Modal>
   );

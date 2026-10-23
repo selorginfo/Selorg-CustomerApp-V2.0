@@ -41,7 +41,4 @@ export const couponsApi = {
 
   validate: (input: ValidateCouponInput): Promise<CouponValidationResult> =>
     SelorgApi.post('/coupons/validate', { data: input }).then(unwrap<CouponValidationResult>),
-
-  redeem: (input: ValidateCouponInput & { order_id: string }): Promise<CouponValidationResult> =>
-    SelorgApi.post('/coupons/redeem', { data: input }).then(unwrap<CouponValidationResult>),
 };

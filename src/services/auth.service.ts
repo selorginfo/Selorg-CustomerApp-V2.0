@@ -56,9 +56,9 @@ export const authApi = {
     SelorgApi.post('/auth/verify-otp', { data: params }).then(unwrap<VerifyOtpResult>),
 
   /** Re-send the OTP for an existing session (respects the resend cooldown). */
-  resendOtp: (params: { sessionId: string }): Promise<{ channel: string; resendCooldownSeconds: number }> =>
+  resendOtp: (params: { sessionId: string }): Promise<{ channel: string; resendCooldownSeconds: number; sessionId?: string }> =>
     SelorgApi.post('/auth/resend-otp', { data: params }).then(
-      unwrap<{ channel: string; resendCooldownSeconds: number }>,
+      unwrap<{ channel: string; resendCooldownSeconds: number; sessionId?: string }>,
     ),
 
   logout: (params: { refreshToken?: string } = {}) =>
