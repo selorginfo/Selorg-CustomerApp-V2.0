@@ -152,6 +152,27 @@ android {
         }
     }
 
+    // An unsigned release is a failed release, not a file that fails later at Play upload.
+    gradle.taskGraph.whenReady { graph ->
+        def releaseRequested = graph.allTasks.any { task ->
+            def name = task.name
+            name.contains('Release') && (
+                name.startsWith('assemble') ||
+                name.startsWith('bundle') ||
+                name.startsWith('install') ||
+                name.startsWith('package')
+            )
+        }
+        if (!releaseRequested) return
+        def storePath = project.findProperty('SELORG_UPLOAD_STORE_FILE')
+        def storePass = project.findProperty('SELORG_UPLOAD_STORE_PASSWORD')
+        def uploadAlias = project.findProperty('SELORG_UPLOAD_KEY_ALIAS')
+        def uploadPass = project.findProperty('SELORG_UPLOAD_KEY_PASSWORD')
+        if (!storePath || !storePass || !uploadAlias || !uploadPass) {
+            throw new GradleException('Release build needs SELORG_UPLOAD_STORE_FILE, SELORG_UPLOAD_STORE_PASSWORD, SELORG_UPLOAD_KEY_ALIAS and SELORG_UPLOAD_KEY_PASSWORD in ~/.gradle/gradle.properties or CI.')
+        }
+    }
+
     applicationVariants.all { variant ->
         variant.outputs.all { output ->
             def version = variant.versionName

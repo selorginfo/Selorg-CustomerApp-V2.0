@@ -39,10 +39,13 @@ export const deliveryApi = {
     cartItemCount?: number;
   }): Promise<DeliveryEstimate | null> => {
     const assignment = await storeApi.assign(params.latitude, params.longitude).catch(() => null);
-    if (assignment?.serviceable === false) return null;
-    if (assignment?.store?._id) mmkvStorage.setItem('assignedStoreId', assignment.store._id);
-    const storeId = assignment?.store?._id || mmkvStorage.getItem('assignedStoreId');
+    if (assignment?.serviceable === false) {
+      mmkvStorage.removeItem('assignedStoreId');
+      return null;
+    }
+    const storeId = assignment?.store?._id;
     if (!storeId) return null;
+    mmkvStorage.setItem('assignedStoreId', storeId);
     return deliveryApi.getEstimate({ storeId, ...params });
   },
 

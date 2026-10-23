@@ -30,10 +30,24 @@
 -keep class com.google.firebase.** { *; }
 -dontwarn com.google.firebase.**
 
-# --- Razorpay ---
+# --- Maps ---
+-keep class com.google.android.gms.maps.** { *; }
+-keep class com.google.android.gms.location.** { *; }
+-keep class com.rnmaps.maps.** { *; }
+-dontwarn com.google.android.gms.**
+
+# --- WebView, notifications, storage, media ---
+-keep class com.reactnativecommunity.webview.** { *; }
+-keep class io.invertase.notifee.** { *; }
+-keep class app.notifee.** { *; }
+-keep class com.mrousavy.mmkv.** { *; }
+-keep class com.tencent.mmkv.** { *; }
+-keep class com.oblador.keychain.** { *; }
+-keep class com.brentvatne.react.** { *; }
+-keep class com.airbnb.lottie.** { *; }
+-keep class com.airbnb.android.react.lottie.** { *; }
+
 -keepattributes *Annotation*
--dontwarn com.razorpay.**
--keep class com.razorpay.** { *; }
 
 # --- PDFBox ---
 -dontwarn com.tom_roush.pdfbox.**

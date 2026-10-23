@@ -9,6 +9,8 @@ export type StorageKey = 'accessToken' | 'userId' | 'userData';
 
 const KEYS: StorageKey[] = ['accessToken', 'userId', 'userData'];
 const TOKEN_SERVICE = 'selorg.accessToken';
+/** Survives in MMKV for an upgrade, and is absent after uninstall. iOS Keychain is not. */
+const INSTALL_MARKER = 'installMarker';
 
 let memoryToken: string | null | undefined;
 
@@ -45,6 +47,20 @@ export const Storage = {
   hydrate: async (): Promise<void> => {
     const keychain = loadKeychain();
     const legacy = mmkvStorage.getItem('accessToken');
+    const seenThisInstall = mmkvStorage.getItem(INSTALL_MARKER);
+    if (!seenThisInstall) {
+      mmkvStorage.setItem(INSTALL_MARKER, '1');
+      const keptSession = Boolean(legacy || mmkvStorage.getItem('userId') || mmkvStorage.getItem('userData'));
+      if (!keptSession && keychain) {
+        try {
+          await keychain.resetGenericPassword({ service: TOKEN_SERVICE });
+        } catch {
+          // A missing native module must not block launch.
+        }
+        memoryToken = null;
+        return;
+      }
+    }
     if (!keychain) {
       memoryToken = legacy;
       return;

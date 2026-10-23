@@ -20,20 +20,10 @@ const UPI_INTENT_PACKAGES = [
   'net.one97.paytm',
   'in.org.npci.upiapp',
 ];
-const PAYMENT_HOST_SUFFIXES = ['paynimo.com', 'worldline.com', 'tpsl-india.in'];
 
-function hostOf(url: string): string {
-  const match = url.match(/^https?:\/\/([^/:?#]+)/i);
-  return (match?.[1] || '').toLowerCase();
-}
-
-function isPaymentPage(url: string, returnUrl?: string | null): boolean {
-  if (/^(about|data|blob|javascript):/i.test(url)) return true;
-  const host = hostOf(url);
-  if (!host) return false;
-  if (PAYMENT_HOST_SUFFIXES.some(suffix => host === suffix || host.endsWith(`.${suffix}`))) return true;
-  const returnHost = returnUrl ? hostOf(returnUrl) : '';
-  return Boolean(returnHost) && host === returnHost;
+/** HTTPS, plus the inline pages the Paynimo SDK uses. HTTP stays blocked. */
+function isSecureCheckoutUrl(url: string): boolean {
+  return /^(https:|about:|data:|blob:|javascript:)/i.test(url);
 }
 
 function allowedUpiUrl(url: string): boolean {
@@ -150,7 +140,8 @@ export default function WorldlineCheckoutWebView({
             }
             return false;
           }
-          if (!isPaymentPage(req.url, redirectUrl) && !isWorldlineReturnUrl(req.url)) return false;
+          // Checkout is already open. Card OTP and net banking live on the bank's own site.
+          if (!isSecureCheckoutUrl(req.url)) return false;
           if (isWorldlineReturnUrl(req.url)) {
             const parsed = parseReturnUrl(req.url);
             const hasResult =

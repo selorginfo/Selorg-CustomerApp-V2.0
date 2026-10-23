@@ -212,6 +212,7 @@ export default function CheckoutScreen() {
       try {
         const check = await storeApi.assign(selectedAddress.latitude, selectedAddress.longitude);
         if (check?.serviceable === false) {
+          mmkvStorage.removeItem('assignedStoreId');
           showToast(check.message || "We don't deliver to this address yet. Choose another address.", 'err');
           return;
         }
