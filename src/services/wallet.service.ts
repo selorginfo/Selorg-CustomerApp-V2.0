@@ -60,7 +60,4 @@ export const walletApi = {
     SelorgApi.post('/wallet/top-up/session', {
       data: { amount, platform: platform ?? apiPlatform(), ...(paymentMode ? { paymentMode } : {}) },
     }).then(unwrap<TopUpSession>),
-
-  debitForCheckout: (amount: number, orderId?: string): Promise<void> =>
-    SelorgApi.post('/wallet/debit', { data: { amount, orderId } }).then(() => undefined),
 };

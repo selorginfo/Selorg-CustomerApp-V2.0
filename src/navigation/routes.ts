@@ -4,13 +4,8 @@ export const ROUTES = {
   ONBOARDING: 'Onboarding',
 
   ENTER_MOBILE: 'EnterMobile',
-  LOGIN_PASSWORD: 'LoginPassword',
-  CREATE_PASSWORD: 'CreatePassword',
-  FORGOT: 'Forgot',
-  RESET_PASSWORD: 'ResetPassword',
   OTP: 'Otp',
   PROFILE_SETUP: 'ProfileSetup',
-  AUTH_SUCCESS: 'AuthSuccess',
   LOCATION_PERMISSION: 'LocationPermission',
 
   MAIN: 'Main',

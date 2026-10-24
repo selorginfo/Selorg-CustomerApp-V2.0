@@ -248,12 +248,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     try {
       const res = await authApi.resendOtp({ sessionId: otpSession.sessionId });
       // Keep the active sessionId; refresh cooldown from server.
-      if ((res as { sessionId?: string }).sessionId) {
-        setOtpSession(prev =>
-          prev
-            ? { ...prev, sessionId: (res as { sessionId: string }).sessionId }
-            : prev,
-        );
+      if (res.sessionId) {
+        setOtpSession(prev => (prev ? { ...prev, sessionId: res.sessionId as string } : prev));
       }
       setOtpAttemptsLeft(MAX_OTP_ATTEMPTS);
       startCooldown(res.resendCooldownSeconds ?? 30);
