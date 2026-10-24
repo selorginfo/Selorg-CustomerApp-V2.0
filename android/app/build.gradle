@@ -171,6 +171,10 @@ android {
         if (!storePath || !storePass || !uploadAlias || !uploadPass) {
             throw new GradleException('Release build needs SELORG_UPLOAD_STORE_FILE, SELORG_UPLOAD_STORE_PASSWORD, SELORG_UPLOAD_KEY_ALIAS and SELORG_UPLOAD_KEY_PASSWORD in ~/.gradle/gradle.properties or CI.')
         }
+        def mapsKey = project.findProperty('GOOGLE_MAPS_API_KEY')
+        if (!mapsKey) {
+            throw new GradleException('Release build needs GOOGLE_MAPS_API_KEY in ~/.gradle/gradle.properties or CI. An empty key ships a blank map.')
+        }
     }
 
     applicationVariants.all { variant ->

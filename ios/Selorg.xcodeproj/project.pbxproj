@@ -138,6 +138,7 @@
 				13B07F8C1A680F5B00A75B9A /* Frameworks */,
 				13B07F8E1A680F5B00A75B9A /* Resources */,
 				00DD1BFF1BD5951E006B06BC /* Bundle React Native code and images */,
+				A7C3E91B2D4F608192A3B4C5 /* Require Maps key for Release */,
 				00EEFC60759A1932668264C0 /* [CP] Embed Pods Frameworks */,
 				E235C05ADACE081382539298 /* [CP] Copy Pods Resources */,
 				B51AF8CD96DE934E7AB86F58 /* [CP-User] [RNFB] Core Configuration */,
@@ -216,6 +217,21 @@
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
 			shellScript = "set -e\n\nWITH_ENVIRONMENT=\"$REACT_NATIVE_PATH/scripts/xcode/with-environment.sh\"\nREACT_NATIVE_XCODE=\"$REACT_NATIVE_PATH/scripts/react-native-xcode.sh\"\n\n/bin/sh -c \"\\\"$WITH_ENVIRONMENT\\\" \\\"$REACT_NATIVE_XCODE\\\"\"\n";
+		};
+		A7C3E91B2D4F608192A3B4C5 /* Require Maps key for Release */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+				"$(SRCROOT)/Selorg/Secrets.xcconfig",
+			);
+			name = "Require Maps key for Release";
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "if [ \"${CONFIGURATION}\" != \"Release\" ]; then\n  exit 0\nfi\nKEY_FILE=\"${SRCROOT}/Selorg/Secrets.xcconfig\"\nKEY=$(grep -E '^GOOGLE_MAPS_API_KEY[[:space:]]*=' \"$KEY_FILE\" 2>/dev/null | head -n 1 | cut -d= -f2- | tr -d '[:space:]\"')\nif [ -z \"$KEY\" ]; then\n  echo \"error: Release build needs GOOGLE_MAPS_API_KEY in ios/Selorg/Secrets.xcconfig. Copy Secrets.xcconfig.example and set the key.\" >&2\n  exit 1\nfi\n";
 		};
 		00EEFC60759A1932668264C0 /* [CP] Embed Pods Frameworks */ = {
 			isa = PBXShellScriptBuildPhase;
