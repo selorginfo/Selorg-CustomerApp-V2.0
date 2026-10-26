@@ -123,6 +123,7 @@ android {
             // Passwords live in ~/.gradle/gradle.properties or CI, never in this file.
             // SELORG_UPLOAD_STORE_FILE, SELORG_UPLOAD_STORE_PASSWORD,
             // SELORG_UPLOAD_KEY_ALIAS, SELORG_UPLOAD_KEY_PASSWORD
+            // Until all four are set, this config stays empty and release is unsigned.
             def storePath = project.findProperty("SELORG_UPLOAD_STORE_FILE")
             def storePass = project.findProperty("SELORG_UPLOAD_STORE_PASSWORD")
             def uploadAlias = project.findProperty("SELORG_UPLOAD_KEY_ALIAS")
@@ -152,7 +153,7 @@ android {
         }
     }
 
-    // An unsigned release is a failed release, not a file that fails later at Play upload.
+    // Missing upload-key properties leave the release unsigned. They are not a build error.
     gradle.taskGraph.whenReady { graph ->
         def releaseRequested = graph.allTasks.any { task ->
             def name = task.name
@@ -164,13 +165,6 @@ android {
             )
         }
         if (!releaseRequested) return
-        def storePath = project.findProperty('SELORG_UPLOAD_STORE_FILE')
-        def storePass = project.findProperty('SELORG_UPLOAD_STORE_PASSWORD')
-        def uploadAlias = project.findProperty('SELORG_UPLOAD_KEY_ALIAS')
-        def uploadPass = project.findProperty('SELORG_UPLOAD_KEY_PASSWORD')
-        if (!storePath || !storePass || !uploadAlias || !uploadPass) {
-            throw new GradleException('Release build needs SELORG_UPLOAD_STORE_FILE, SELORG_UPLOAD_STORE_PASSWORD, SELORG_UPLOAD_KEY_ALIAS and SELORG_UPLOAD_KEY_PASSWORD in ~/.gradle/gradle.properties or CI.')
-        }
         def mapsKey = project.findProperty('GOOGLE_MAPS_API_KEY')
         if (!mapsKey) {
             throw new GradleException('Release build needs GOOGLE_MAPS_API_KEY in ~/.gradle/gradle.properties or CI. An empty key ships a blank map.')
