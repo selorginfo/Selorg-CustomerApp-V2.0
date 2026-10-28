@@ -145,7 +145,8 @@ const buildRequestInit = (options: any) => {
   };
 
   const token = Storage.getItem('accessToken');
-  if (token) headers.Authorization = `Bearer ${token}`;
+  // Explicit Authorization (e.g. logout / remove-token after clearAuth) must win.
+  if (token && !headers.Authorization) headers.Authorization = `Bearer ${token}`;
 
   const init: any = { method: options.method, headers };
 

@@ -1,4 +1,5 @@
 import SelorgApi from '../api';
+import { authLogoutRequestOptions } from '../utils/authLogoutRequest';
 
 /**
  * Auth + account endpoints — selorg-service `/api/v1/customer/auth` + `/user`.
@@ -62,8 +63,11 @@ export const authApi = {
       unwrap<{ channel: string; resendCooldownSeconds: number; sessionId?: string; otpLength?: number }>,
     ),
 
-  logout: (params: { refreshToken?: string } = {}) =>
-    SelorgApi.post('/auth/logout', { data: params }),
+  /** Pass accessToken explicitly — logout clears storage before this request may run. */
+  logout: (params: { refreshToken?: string; accessToken?: string } = {}) => {
+    const { accessToken, refreshToken } = params;
+    return SelorgApi.post('/auth/logout', authLogoutRequestOptions(accessToken, { refreshToken }));
+  },
 
   sendDeleteAccountOtp: (): Promise<SendOtpResult & { maskedContact?: string }> =>
     SelorgApi.post('/auth/account/delete/send-otp', { data: {} }).then(

@@ -408,8 +408,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const logout = useCallback(() => {
     const accessToken = Storage.getItem('accessToken');
     // Remove the device push token while the access token is still valid, then revoke it.
+    // clearAuth runs immediately below — both requests carry the captured bearer explicitly.
     unregisterPushToken(accessToken)
-      .then(() => (accessToken ? authApi.logout() : undefined))
+      .then(() => (accessToken ? authApi.logout({ accessToken }) : undefined))
       .catch(() => {});
     closeCustomerSocket();
     Storage.clearAuth();
