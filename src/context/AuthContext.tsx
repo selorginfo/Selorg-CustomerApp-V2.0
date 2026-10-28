@@ -14,6 +14,7 @@ import type { OtpChannel } from '../services/auth.service';
 import { getErrorCode, getErrorMessage } from '../utils/apiError';
 import { mmkvStorage } from '../lib/storage';
 import { unregisterPushToken } from '../services/pushNotifications';
+import { otpLengthMessage } from '../utils/otpLength';
 
 export interface AppUser {
   id: string;
@@ -29,6 +30,7 @@ interface OtpSession {
   mode: 'login' | 'signup' | 'reset';
   channel?: 'mobile' | 'whatsapp' | 'email';
   sessionId?: string;
+  otpLength?: number;
 }
 
 interface AuthContextType {
@@ -221,7 +223,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             ? { email, preferredChannel, intent }
             : { phoneNumber: phone, preferredChannel, intent },
         );
-        setOtpSession({ phone, email, mode, channel, sessionId: res.sessionId });
+        setOtpSession({ phone, email, mode, channel, sessionId: res.sessionId, otpLength: res.otpLength });
         setOtpAttemptsLeft(MAX_OTP_ATTEMPTS);
         startCooldown(res.resendCooldownSeconds ?? 30);
         return { success: true };
@@ -248,8 +250,16 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     try {
       const res = await authApi.resendOtp({ sessionId: otpSession.sessionId });
       // Keep the active sessionId; refresh cooldown from server.
-      if (res.sessionId) {
-        setOtpSession(prev => (prev ? { ...prev, sessionId: res.sessionId as string } : prev));
+      if (res.sessionId || res.otpLength) {
+        setOtpSession(prev =>
+          prev
+            ? {
+                ...prev,
+                ...(res.sessionId ? { sessionId: res.sessionId } : {}),
+                ...(res.otpLength ? { otpLength: res.otpLength } : {}),
+              }
+            : prev,
+        );
       }
       setOtpAttemptsLeft(MAX_OTP_ATTEMPTS);
       startCooldown(res.resendCooldownSeconds ?? 30);
@@ -268,7 +278,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       code?: string;
       nextStep?: 'profile' | 'home';
     }> => {
-      if (code.length !== 4) return { success: false, message: 'Enter the 4-digit code' };
+      const lengthError = otpLengthMessage(code, otpSession?.otpLength);
+      if (lengthError) return { success: false, message: lengthError };
       if (!otpSession?.sessionId) return { success: false, message: 'Session expired, please retry' };
       if (otpAttemptsLeft <= 0) {
         return {
@@ -395,9 +406,11 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   }, []);
 
   const logout = useCallback(() => {
-    // Before the token is cleared: stop pushes for this account on this device.
-    unregisterPushToken(Storage.getItem('accessToken'));
-    authApi.logout().catch(() => {});
+    const accessToken = Storage.getItem('accessToken');
+    // Remove the device push token while the access token is still valid, then revoke it.
+    unregisterPushToken(accessToken)
+      .then(() => (accessToken ? authApi.logout() : undefined))
+      .catch(() => {});
     closeCustomerSocket();
     Storage.clearAuth();
     try {

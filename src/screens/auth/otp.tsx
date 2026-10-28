@@ -45,7 +45,7 @@ export default function OtpScreen() {
   }, [otpSession?.mode]);
 
   const onVerify = async () => {
-    if (code.length !== 4 || loading || locked) return;
+    if (code.length !== (otpSession?.otpLength || 4) || loading || locked) return;
     Keyboard.dismiss();
     setError(null);
     setLoading(true);
@@ -114,7 +114,7 @@ export default function OtpScreen() {
         </View>
 
         <View style={styles.otpWrap}>
-          <OtpBoxInput value={code} onChange={setCode} error={!!error} autoFocus />
+          <OtpBoxInput length={otpSession?.otpLength || 4} value={code} onChange={setCode} error={!!error} autoFocus />
         </View>
 
         {error ? (

@@ -12,6 +12,7 @@
     "start:reset": "node scripts/start-metro.js --reset-cache",
     "start:android:dev": "node scripts/run-android.js",
     "test": "jest",
+    "check:maps-key": "node scripts/check-no-hardcoded-maps-key.js",
     "test:automation": "playwright test && node scripts/generate-api-test-report.mjs",
     "test:automation:report": "node scripts/generate-api-test-report.mjs",
     "seed:catalog": "node ../selorg-service/scripts/seed-customer-catalog-automation.mjs"

@@ -25,6 +25,7 @@ import type { PayMethod } from '../../context/OrdersContext';
 import { deliveryApi, type DeliveryEstimate } from '../../services/delivery.service';
 import { mmkvStorage } from '../../lib/storage';
 import { storeApi } from '../../services/store.service';
+import { couponsApi, type ApiCoupon } from '../../services/coupons.service';
 import type { RootStackParamList } from '../../navigation/types';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -106,7 +107,7 @@ function formatExpectedDelivery(range: [number, number]): string {
 export default function CheckoutScreen() {
   const navigation = useNavigation<Nav>();
   const cart = useCart();
-  const { items, totalItems, tip, setTip, grandTotal, coupon, discount, applyCoupon, removeCoupon } = cart;
+  const { items, totalItems, tip, setTip, grandTotal, coupon, discount, applyCoupon, removeCoupon, itemTotal } = cart;
   const { selectedAddress } = useAddress();
   const wallet = useWallet();
 
@@ -128,6 +129,9 @@ export default function CheckoutScreen() {
   const [receiverPhone, setReceiverPhone] = useState('');
   const [payMethod, setPayMethod] = useState<PayMethod>('online');
   const [couponInput, setCouponInput] = useState('');
+  const [offersOpen, setOffersOpen] = useState(false);
+  const [offers, setOffers] = useState<ApiCoupon[]>([]);
+  const [offersLoading, setOffersLoading] = useState(false);
   const [checkingArea, setCheckingArea] = useState(false);
   // Keep the quote live: changing address or payment method re-runs the
   // server-side pricing engine, so the delivery fee shown is always the fee
@@ -168,6 +172,26 @@ export default function CheckoutScreen() {
       cancelled = true;
     };
   }, [selectedAddress, totalItems]);
+
+  useEffect(() => {
+    if (!offersOpen) return undefined;
+    let cancelled = false;
+    setOffersLoading(true);
+    couponsApi
+      .list(itemTotal)
+      .then((list) => {
+        if (!cancelled) setOffers(list);
+      })
+      .catch(() => {
+        if (!cancelled) setOffers([]);
+      })
+      .finally(() => {
+        if (!cancelled) setOffersLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [offersOpen, itemTotal]);
 
   if (items.length === 0) {
     return (
@@ -470,6 +494,36 @@ export default function CheckoutScreen() {
                 </Pressable>
               </View>
             )}
+            <Pressable onPress={() => setOffersOpen((open) => !open)} hitSlop={6} style={styles.offerToggle}>
+              <Text style={styles.offerToggleLabel}>{offersOpen ? 'Hide offers' : 'View offers'}</Text>
+            </Pressable>
+            {offersOpen ? (
+              <View style={styles.offerList}>
+                {offersLoading ? <Text style={styles.offerMeta}>Loading offers…</Text> : null}
+                {!offersLoading && offers.length === 0 ? (
+                  <Text style={styles.offerMeta}>No offers for this cart yet.</Text>
+                ) : null}
+                {offers.map((offer) => (
+                  <Pressable
+                    key={offer._id}
+                    style={styles.offerRow}
+                    onPress={() => {
+                      setCouponInput(offer.code);
+                      applyCoupon(offer.code);
+                    }}
+                  >
+                    <View style={styles.offerText}>
+                      <Text style={styles.offerCode}>{offer.code}</Text>
+                      <Text style={styles.offerMeta} numberOfLines={2}>
+                        {offer.name || offer.description || 'Offer'}
+                        {offer.minOrderAmount ? ` · Min ${formatCurrency(offer.minOrderAmount)}` : ''}
+                      </Text>
+                    </View>
+                    <Text style={styles.couponApplyLabel}>Apply</Text>
+                  </Pressable>
+                ))}
+              </View>
+            ) : null}
           </View>
 
           <BillSummaryCard />
@@ -703,6 +757,20 @@ const styles = StyleSheet.create({
   couponAppliedTitle: { fontFamily: fontFamily.bold, fontSize: 13.5, color: colors.primaryDark },
   couponAppliedSub: { fontFamily: fontFamily.semibold, fontSize: 11.5, color: colors.textMuted, marginTop: 1 },
   couponRemove: { fontFamily: fontFamily.bold, fontSize: 12.5, color: colors.danger },
+  offerToggle: { marginTop: 10 },
+  offerToggleLabel: { fontFamily: fontFamily.bold, fontSize: 13, color: colors.primaryDark },
+  offerList: { marginTop: 8, gap: 8 },
+  offerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 8,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border,
+  },
+  offerText: { flex: 1, minWidth: 0 },
+  offerCode: { fontFamily: fontFamily.bold, fontSize: 13, color: colors.text },
+  offerMeta: { fontFamily: fontFamily.semibold, fontSize: 11.5, color: colors.textMuted, marginTop: 2 },
 
   bottomBar: {
     flexDirection: 'row',

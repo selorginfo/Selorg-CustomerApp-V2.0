@@ -19,6 +19,7 @@
 import { Storage } from './storage';
 import configs from './configs';
 import { normalizeApiAssetUrl } from '../config/api';
+import { shouldRewriteAsset } from '../config/assetUrl';
 import { normalizeApiError } from '../utils/apiError';
 import { isNetworkFailure, reportNetworkFailure, reportNetworkSuccess } from '../utils/connectivity';
 
@@ -54,15 +55,13 @@ const friendlyErrorMessage = (errorBody: any, status: number) => {
 // Response asset-URL normalization
 // ---------------------------------------------------------------------------
 
-const ASSET_KEY_PATTERN = /(image|images|video|thumbnail|avatar|logo|banner|icon|url)/i;
-
 const normalizePayload = (value: any, keyName = ''): any => {
   if (typeof value === 'string') {
-    return ASSET_KEY_PATTERN.test(keyName) ? normalizeApiAssetUrl(value) : value;
+    return shouldRewriteAsset(keyName, value) ? normalizeApiAssetUrl(value) : value;
   }
   if (Array.isArray(value)) {
     return value.map(entry =>
-      typeof entry === 'string' && ASSET_KEY_PATTERN.test(keyName)
+      typeof entry === 'string' && shouldRewriteAsset(keyName, entry)
         ? normalizeApiAssetUrl(entry)
         : normalizePayload(entry),
     );

@@ -91,7 +91,7 @@ export async function registerPushTokenIfAvailable(): Promise<void> {
  * unregister the token server-side, then rotate it locally so a stale copy
  * can't be reused. Call with the access token *before* it is cleared.
  */
-export function unregisterPushToken(accessToken: string | null): void {
+export async function unregisterPushToken(accessToken: string | null): Promise<void> {
   if (tokenRefreshUnsubscribe) {
     tokenRefreshUnsubscribe();
     tokenRefreshUnsubscribe = null;
@@ -99,7 +99,11 @@ export function unregisterPushToken(accessToken: string | null): void {
   const token = mmkvStorage.getItem(FCM_TOKEN_KEY);
   mmkvStorage.removeItem(FCM_TOKEN_KEY);
   if (token && accessToken) {
-    pushApi.removeToken(token, accessToken).catch(() => {});
+    try {
+      await pushApi.removeToken(token, accessToken);
+    } catch {
+      // A failed unregister must not block logout. The token was already dropped locally.
+    }
   }
   try {
     const messaging = require('@react-native-firebase/messaging').default;
