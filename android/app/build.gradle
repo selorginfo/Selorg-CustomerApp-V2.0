@@ -191,10 +191,14 @@ android {
         tasks.named("bundle${variant.name.capitalize()}").configure { bundleTask ->
             bundleTask.doLast {
                 def version = variant.versionName
+                def unsigned = variant.buildType.name == 'release' && !signingConfigs.release.storeFile
+                def aabName = unsigned
+                    ? "selorg-customer-app-${version}-unsigned.aab"
+                    : "selorg-customer-app-${version}.aab"
                 def aabDir = new File("${buildDir}/outputs/bundle/${variant.name}")
                 aabDir.listFiles()?.each { file ->
                     if (file.name.endsWith(".aab")) {
-                        file.renameTo(new File(aabDir, "selorg-customer-app-${version}.aab"))
+                        file.renameTo(new File(aabDir, aabName))
                     }
                 }
             }

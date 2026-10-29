@@ -23,6 +23,11 @@ describe('Customer Android release signing guard', () => {
     expect(gradle).toContain('selorg-customer-app-${version}-unsigned.apk');
   });
 
+  it('names unsigned release AABs distinctly when signing is bypassed', () => {
+    expect(gradle).toContain('selorg-customer-app-${version}-unsigned.aab');
+    expect(gradle).toMatch(/unsigned[\s\S]*selorg-customer-app-\$\{version\}-unsigned\.aab/);
+  });
+
   it('does not embed store passwords in the tracked gradle file', () => {
     expect(gradle).not.toMatch(/SELORG_UPLOAD_STORE_PASSWORD\s*=\s*['"][^'"]+['"]/);
     expect(gradle).not.toMatch(/storePassword\s+['"](?!android)[^'"]+['"]/);
