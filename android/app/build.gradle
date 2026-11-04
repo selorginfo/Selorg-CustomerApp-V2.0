@@ -112,6 +112,26 @@ android {
     adbOptions {
         timeOutInMs 15 * 60 * 1000
     }
+    // Upload keystore credentials: ~/.gradle/gradle.properties or CI only — never commit.
+    // Required: SELORG_UPLOAD_STORE_FILE, SELORG_UPLOAD_STORE_PASSWORD,
+    //           SELORG_UPLOAD_KEY_ALIAS, SELORG_UPLOAD_KEY_PASSWORD
+    // Opt-out (smoke only): -PallowUnsignedRelease=true → genuinely unsigned *-unsigned.apk/.aab
+    def releaseSigningPropNames = [
+        'SELORG_UPLOAD_STORE_FILE',
+        'SELORG_UPLOAD_STORE_PASSWORD',
+        'SELORG_UPLOAD_KEY_ALIAS',
+        'SELORG_UPLOAD_KEY_PASSWORD'
+    ]
+    def releaseSigningProps = releaseSigningPropNames.collectEntries { name ->
+        [(name): (project.findProperty(name)?.toString()?.trim() ?: '')]
+    }
+    def releaseSigningPresent = releaseSigningProps.findAll { _, value -> !value.isEmpty() }.keySet()
+    def releaseSigningMissing = releaseSigningPropNames.findAll { !releaseSigningPresent.contains(it) }
+    def hasCompleteReleaseSigning = releaseSigningMissing.isEmpty()
+    def hasPartialReleaseSigning = !releaseSigningPresent.isEmpty() && !hasCompleteReleaseSigning
+    // Explicit -P only. Never default. Forces unsigned even if upload props exist.
+    def allowUnsignedRelease = project.findProperty('allowUnsignedRelease')?.toString()?.equalsIgnoreCase('true') == true
+
     signingConfigs {
         debug {
             storeFile file('debug.keystore')
@@ -120,19 +140,17 @@ android {
             keyPassword 'android'
         }
         release {
-            // Passwords live in ~/.gradle/gradle.properties or CI, never in this file.
-            // SELORG_UPLOAD_STORE_FILE, SELORG_UPLOAD_STORE_PASSWORD,
-            // SELORG_UPLOAD_KEY_ALIAS, SELORG_UPLOAD_KEY_PASSWORD
-            // Until all four are set, this config stays empty — release tasks then fail below.
-            def storePath = project.findProperty("SELORG_UPLOAD_STORE_FILE")
-            def storePass = project.findProperty("SELORG_UPLOAD_STORE_PASSWORD")
-            def uploadAlias = project.findProperty("SELORG_UPLOAD_KEY_ALIAS")
-            def uploadPass = project.findProperty("SELORG_UPLOAD_KEY_PASSWORD")
-            if (storePath && storePass && uploadAlias && uploadPass) {
-                storeFile file(storePath)
-                storePassword storePass
-                keyAlias uploadAlias
-                keyPassword uploadPass
+            if (hasCompleteReleaseSigning) {
+                def storeFileCandidate = file(releaseSigningProps['SELORG_UPLOAD_STORE_FILE'])
+                if (!storeFileCandidate.isFile()) {
+                    throw new GradleException(
+                        "SELORG_UPLOAD_STORE_FILE does not exist or is not a file: ${storeFileCandidate.absolutePath}"
+                    )
+                }
+                storeFile storeFileCandidate
+                storePassword releaseSigningProps['SELORG_UPLOAD_STORE_PASSWORD']
+                keyAlias releaseSigningProps['SELORG_UPLOAD_KEY_ALIAS']
+                keyPassword releaseSigningProps['SELORG_UPLOAD_KEY_PASSWORD']
             }
         }
     }
@@ -145,7 +163,8 @@ android {
             ]
         }
         release {
-            if (signingConfigs.release.storeFile) {
+            // Production path: upload keystore only. allowUnsignedRelease must never become default.
+            if (hasCompleteReleaseSigning && !allowUnsignedRelease) {
                 signingConfig signingConfigs.release
             }
             minifyEnabled enableProguardInReleaseBuilds
@@ -165,12 +184,25 @@ android {
             )
         }
         if (!releaseRequested) return
-        def mapsKey = project.findProperty('GOOGLE_MAPS_API_KEY')
+
+        def mapsKey = project.findProperty('GOOGLE_MAPS_API_KEY')?.toString()?.trim()
         if (!mapsKey) {
-            throw new GradleException('Release build needs GOOGLE_MAPS_API_KEY in ~/.gradle/gradle.properties or CI. An empty key ships a blank map.')
+            throw new GradleException(
+                'Release build needs GOOGLE_MAPS_API_KEY in ~/.gradle/gradle.properties or CI ' +
+                '(or -PGOOGLE_MAPS_API_KEY=...). An empty key ships a blank map. Do not commit the key.'
+            )
         }
-        def allowUnsigned = project.findProperty('allowUnsignedRelease')?.toString()?.equalsIgnoreCase('true')
-        if (!signingConfigs.release.storeFile && !allowUnsigned) {
+
+        if (hasPartialReleaseSigning) {
+            throw new GradleException(
+                'Incomplete release signing properties. Missing: ' +
+                releaseSigningMissing.join(', ') +
+                '. Set all four SELORG_UPLOAD_* values in ~/.gradle/gradle.properties or CI, ' +
+                'or pass -PallowUnsignedRelease=true only for explicit unsigned smoke builds.'
+            )
+        }
+
+        if (!hasCompleteReleaseSigning && !allowUnsignedRelease) {
             throw new GradleException(
                 'Release build needs SELORG_UPLOAD_STORE_FILE, SELORG_UPLOAD_STORE_PASSWORD, ' +
                 'SELORG_UPLOAD_KEY_ALIAS, and SELORG_UPLOAD_KEY_PASSWORD in ~/.gradle/gradle.properties or CI. ' +
@@ -180,10 +212,13 @@ android {
     }
 
     applicationVariants.all { variant ->
+        def releaseUnsignedArtifact =
+            variant.buildType.name == 'release' &&
+            (allowUnsignedRelease || !signingConfigs.release.storeFile)
+
         variant.outputs.all { output ->
             def version = variant.versionName
-            def unsigned = variant.buildType.name == 'release' && !signingConfigs.release.storeFile
-            outputFileName = unsigned
+            outputFileName = releaseUnsignedArtifact
                 ? "selorg-customer-app-${version}-unsigned.apk"
                 : "selorg-customer-app-${version}.apk"
         }
@@ -191,8 +226,7 @@ android {
         tasks.named("bundle${variant.name.capitalize()}").configure { bundleTask ->
             bundleTask.doLast {
                 def version = variant.versionName
-                def unsigned = variant.buildType.name == 'release' && !signingConfigs.release.storeFile
-                def aabName = unsigned
+                def aabName = releaseUnsignedArtifact
                     ? "selorg-customer-app-${version}-unsigned.aab"
                     : "selorg-customer-app-${version}.aab"
                 def aabDir = new File("${buildDir}/outputs/bundle/${variant.name}")
