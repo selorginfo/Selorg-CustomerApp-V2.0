@@ -164,6 +164,7 @@ export const OrdersProvider: React.FC<{ children: ReactNode }> = ({ children }) 
   const [pendingGatewayOrderId, setPendingGatewayOrderId] = useState<string | null>(null);
   const [pendingGatewayTxnId, setPendingGatewayTxnId] = useState<string | null>(null);
   const placeIdempotencyKeyRef = useRef<string | null>(null);
+  const placeSignatureRef = useRef<string | null>(null);
   // Online order whose payment never completed — "Retry payment" reuses it
   // instead of creating a second pending order.
   const unpaidOnlineOrderRef = useRef<{ id: string; signature: string } | null>(null);
@@ -217,6 +218,7 @@ export const OrdersProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     accountRef.current = userId;
     unpaidOnlineOrderRef.current = null;
     placeIdempotencyKeyRef.current = null;
+    placeSignatureRef.current = null;
     setOrders([]);
     setActiveOrder(null);
     if (!userId) return;
@@ -250,6 +252,10 @@ export const OrdersProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       };
 
       const signature = cartSignature(payload.items, selectedAddressId, cart.coupon, cart.tip);
+      if (placeSignatureRef.current && placeSignatureRef.current !== signature) {
+        placeIdempotencyKeyRef.current = null;
+      }
+      placeSignatureRef.current = signature;
 
       try {
         // Retry of an online payment: reuse the order already created for this

@@ -13,6 +13,27 @@ import { colors, fontFamily } from '../theme';
 import { buildPaynimoCheckoutHtml } from '../utils/paynimoCheckout';
 import { hasWorldlineGatewayPayload, isWorldlineReturnUrl, parseReturnUrl } from '../utils/worldline';
 
+const UPI_SCHEMES = ['upi:', 'phonepe:', 'paytmmp:', 'tez:', 'gpay:'];
+const UPI_INTENT_PACKAGES = [
+  'com.google.android.apps.nbu.paisa.user',
+  'com.phonepe.app',
+  'net.one97.paytm',
+  'in.org.npci.upiapp',
+];
+
+/** HTTPS, plus the inline pages the Paynimo SDK uses. HTTP stays blocked. */
+function isSecureCheckoutUrl(url: string): boolean {
+  return /^(https:|about:|data:|blob:|javascript:)/i.test(url);
+}
+
+function allowedUpiUrl(url: string): boolean {
+  const lower = url.trim().toLowerCase();
+  if (UPI_SCHEMES.some(scheme => lower.startsWith(scheme))) return true;
+  if (!lower.startsWith('intent:')) return false;
+  const packageName = lower.match(/;package=([^;]+)/)?.[1] || '';
+  return UPI_INTENT_PACKAGES.includes(packageName);
+}
+
 export interface WorldlineCheckoutProps {
   visible: boolean;
   /** Paynimo session payload from selorg-service (preferred). */
@@ -113,11 +134,14 @@ export default function WorldlineCheckoutWebView({
         onHttpError={() => setLoading(false)}
         onNavigationStateChange={onNavigationStateChange}
         onShouldStartLoadWithRequest={req => {
-          // UPI intents (upi://, phonepe://, tez://, intent://…) must open the payment app, not load in the WebView.
           if (!/^(https?|about|data|blob|javascript):/i.test(req.url)) {
-            Linking.openURL(req.url).catch(() => setLoading(false));
+            if (allowedUpiUrl(req.url)) {
+              Linking.openURL(req.url).catch(() => setLoading(false));
+            }
             return false;
           }
+          // Checkout is already open. Card OTP and net banking live on the bank's own site.
+          if (!isSecureCheckoutUrl(req.url)) return false;
           if (isWorldlineReturnUrl(req.url)) {
             const parsed = parseReturnUrl(req.url);
             const hasResult =
@@ -143,8 +167,8 @@ export default function WorldlineCheckoutWebView({
         startInLoadingState
         javaScriptEnabled
         domStorageEnabled
-        originWhitelist={['*']}
-        mixedContentMode="always"
+        originWhitelist={['https://*', 'about:blank']}
+        mixedContentMode="never"
       />
     </Modal>
   );

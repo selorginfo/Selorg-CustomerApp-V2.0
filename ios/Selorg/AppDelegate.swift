@@ -33,7 +33,9 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
       launchOptions: launchOptions
     )
 
-    GMSServices.provideAPIKey("AIzaSyAa8QYUOOYJ8QHNxUe3_R3PwxRBRVE51ZY")
+    if let mapsKey = Bundle.main.object(forInfoDictionaryKey: "GMSApiKey") as? String, !mapsKey.isEmpty {
+      GMSServices.provideAPIKey(mapsKey)
+    }
 
     return true
   }

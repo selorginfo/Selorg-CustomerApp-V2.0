@@ -130,6 +130,7 @@ export const ordersApi = {
   createOrder: (data: CreateOrderPayload, opts?: { idempotencyKey?: string }): Promise<ApiOrder> =>
     SelorgApi.post('/orders', {
       data,
+      timeoutMs: 45000,
       header: opts?.idempotencyKey
         ? { 'Idempotency-Key': opts.idempotencyKey }
         : undefined,
@@ -156,9 +157,6 @@ export const ordersApi = {
 
   rateOrder: (id: string, data: { rating: number; comment?: string }): Promise<void> =>
     SelorgApi.post(`/orders/${id}/rate`, { data }).then(() => undefined),
-
-  verifyDeliveryOtp: (id: string, otp: string): Promise<void> =>
-    SelorgApi.post(`/orders/${id}/verify-otp`, { data: { otp } }).then(() => undefined),
 
   reorder: (id: string): Promise<unknown> =>
     SelorgApi.post(`/orders/${id}/reorder`).then(unwrap),

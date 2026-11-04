@@ -12,13 +12,8 @@ export type RootStackParamList = {
   Onboarding: undefined;
 
   EnterMobile: { mode: 'login' | 'signup' } | undefined;
-  LoginPassword: { method: 'email' | 'mobile' } | undefined;
-  CreatePassword: undefined;
-  Forgot: undefined;
-  ResetPassword: undefined;
   Otp: undefined;
   ProfileSetup: undefined;
-  AuthSuccess: { mode: 'login' | 'signup' };
   LocationPermission: undefined;
 
   Main: NavigatorScreenParams<MainTabParamList> | undefined;

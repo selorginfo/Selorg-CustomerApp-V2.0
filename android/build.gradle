@@ -30,3 +30,20 @@ allprojects {
         }
     }
 }
+
+// OneDrive + spaces in the project path make ninja treat build.ninja as forever-dirty
+// under node_modules/**/android/.cxx. Mirror app/build.gradle's C:/scxx2 staging
+// for Android libraries. Must run when the plugin is applied (not afterEvaluate).
+subprojects { subproject ->
+    subproject.pluginManager.withPlugin("com.android.library") {
+        def staging = new File("C:/scxx-libs/${subproject.name}")
+        staging.mkdirs()
+        subproject.android {
+            externalNativeBuild {
+                cmake {
+                    buildStagingDirectory staging
+                }
+            }
+        }
+    }
+}

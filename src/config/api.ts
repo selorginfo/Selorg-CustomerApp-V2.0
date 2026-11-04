@@ -112,21 +112,23 @@ const getDevApiCandidates = () => {
   );
 };
 
-console.log('--- ENV DEBUG START ---');
-console.log('ENV_APP_MODE (from dot):', ENV_APP_MODE_DOT);
-console.log('ENV_APP_MODE (processed):', ENV_APP_MODE);
-console.log('ENV_PROD_API_BASE_URL:', ENV_PROD_API_BASE_URL);
-console.log('ENV_DEV_API_BASE_URL:', ENV_DEV_API_BASE_URL);
-console.log('__DEV__:', __DEV__);
-console.log('--- ENV DEBUG END ---');
+if (__DEV__) {
+  console.log('--- ENV DEBUG START ---');
+  console.log('ENV_APP_MODE (from dot):', ENV_APP_MODE_DOT);
+  console.log('ENV_APP_MODE (processed):', ENV_APP_MODE);
+  console.log('ENV_PROD_API_BASE_URL:', ENV_PROD_API_BASE_URL);
+  console.log('ENV_DEV_API_BASE_URL:', ENV_DEV_API_BASE_URL);
+  console.log('__DEV__:', __DEV__);
+  console.log('--- ENV DEBUG END ---');
+}
 
 export const getApiBaseUrls = () => {
   const isProductionMode = ENV_APP_MODE === 'production';
-  const isDevelopmentMode = ENV_APP_MODE === 'development';
 
-  // If explicitly set to production, use production even in debug/dev mode
-  if (isProductionMode) {
-    console.log('API CONFIG: Explicit production mode detected');
+  // Release builds ignore APP_MODE=development. A shipped binary must not
+  // follow the .env.example default onto localhost.
+  if (isProductionMode || !__DEV__) {
+    if (__DEV__) console.log('API CONFIG: Explicit production mode detected');
     const prodUrl =
       sanitizeApiBaseUrl(ENV_PROD_API_BASE_URL) ||
       sanitizeApiBaseUrl(ENV_API_BASE_URL) ||
@@ -134,18 +136,8 @@ export const getApiBaseUrls = () => {
     return [prodUrl];
   }
 
-  const useDevRouting = __DEV__ || isDevelopmentMode;
-
-  if (useDevRouting) {
-    console.log('API CONFIG: Using development routing');
-    return getDevApiCandidates();
-  }
-
-  const defaultUrl =
-    sanitizeApiBaseUrl(ENV_PROD_API_BASE_URL) ||
-    sanitizeApiBaseUrl(ENV_API_BASE_URL) ||
-    PROD_FALLBACK_API_BASE_URL;
-  return [defaultUrl];
+  if (__DEV__) console.log('API CONFIG: Using development routing');
+  return getDevApiCandidates();
 };
 
 export const API_BASE_URLS = getApiBaseUrls();
@@ -183,4 +175,4 @@ export const normalizeApiAssetUrl = (value?: string | null): string => {
   return `${API_ORIGIN}${normalizedPath}`;
 };
 
-console.log('API Base URL FINAL:', API_BASE_URL, 'Candidates:', API_BASE_URLS);
+if (__DEV__) console.log('API Base URL FINAL:', API_BASE_URL, 'Candidates:', API_BASE_URLS);

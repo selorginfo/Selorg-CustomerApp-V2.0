@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import type { RouteProp } from '@react-navigation/native';
 import {
+  AppState,
   Dimensions,
   Image,
   ImageSourcePropType,
@@ -160,12 +161,24 @@ export default function Tracking() {
     });
   }, [orderId, loadTracked, applyTracking]);
 
-  // Celebrate the moment an order reads as delivered — including the first time
-  // it is opened after being delivered in the background. The storage key makes
-  // it one-shot per order so revisiting tracking does not replay it. This sits
-  // above the early return below: hooks must run on every render.
   const isDelivered = tracked?.status === 'delivered';
   const isLive = !!tracked && tracked.status !== 'delivered' && tracked.status !== 'cancelled';
+
+  useEffect(() => {
+    if (!orderId || !isLive) return undefined;
+    const refresh = () => {
+      loadTracked().catch(() => {});
+      ordersApi.getTracking(orderId).then(applyTracking).catch(() => {});
+    };
+    const timer = setInterval(refresh, 25_000);
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') refresh();
+    });
+    return () => {
+      clearInterval(timer);
+      sub.remove();
+    };
+  }, [orderId, isLive, loadTracked, applyTracking]);
 
   // ETA counts down once a second instead of sitting on a static "mm:00".
   useEffect(() => {
