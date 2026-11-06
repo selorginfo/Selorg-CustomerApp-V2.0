@@ -1,7 +1,7 @@
 import SelorgApi from '../api';
 import { mmkvStorage } from '../lib/storage';
 import { unwrapApiData, unwrapApiList } from '../utils/apiResponse';
-import { normalizeCategory, normalizeProduct } from '../utils/catalogMappers';
+import { mapCategoryBrowse, normalizeCategory, normalizeProduct } from '../utils/catalogMappers';
 
 /** Dark store chosen by `/store/assign`. Catalog stock is scoped to this store. */
 function servingStoreId(explicit?: string): string | undefined {
@@ -66,6 +66,11 @@ export interface ApiCategory {
   isActive?: boolean;
   children?: ApiCategory[];
   subs?: string[];
+  bannerImage?: string;
+  bannerId?: string;
+  bannerVideo?: string;
+  youtubeUrl?: string;
+  videoPlayback?: import('../utils/videoUrl').VideoPlayback;
 }
 
 export interface SearchResult {
@@ -73,9 +78,18 @@ export interface SearchResult {
   meta?: { total: number; page: number; limit: number };
 }
 
+export interface CategoryBrowseResult extends SearchResult {
+  category?: ApiCategory;
+  subcategories: ApiCategory[];
+}
+
 export interface HomeSectionDefinition {
   key: string;
   label?: string;
+  type?: string | null;
+  taglineText?: string;
+  link?: string;
+  layout?: '' | 'hero' | 'strip' | 'scroll' | 'grid' | string;
 }
 
 export interface HomePayload {
@@ -167,12 +181,10 @@ export const catalogApi = {
   getCategoryProducts: async (
     slug: string,
     params?: { page?: number; limit?: number; subcategory?: string },
-  ): Promise<SearchResult> => {
+  ): Promise<CategoryBrowseResult> => {
     const res = await SelorgApi.get(`/categories/${slug}/products`, { query: withStore(params) });
     const data = unwrapApiData<Record<string, unknown>>(res);
-    const products = mapProducts(data?.products ?? data);
-    const pagination = data?.pagination as SearchResult['meta'];
-    return { products, meta: pagination };
+    return mapCategoryBrowse(data);
   },
 
   getCategorySubcategories: async (slug: string): Promise<ApiCategory[]> => {

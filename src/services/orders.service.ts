@@ -27,6 +27,8 @@ export interface ApiOrder {
   status?: string;
   paymentStatus?: string;
   paymentMethodType?: string;
+  paymentMethod?: string | { type?: string; methodType?: string };
+  requiresOnlinePayment?: boolean;
   items?: Array<Record<string, unknown>>;
   subtotal?: number;
   discount?: number;

@@ -14,6 +14,7 @@ import {
   Skeleton,
   StateView,
 } from '../../components';
+import { CategoryMediaHeader } from '../../components/CategoryMediaHeader';
 import type { AppTabKey } from '../../components';
 import { colors, fontFamily, shadows } from '../../theme';
 import { catalogApi } from '../../services/catalog.service';
@@ -65,6 +66,8 @@ export default function CategoryProductsScreen() {
   const wishlist = useWishlist();
 
   const [category, setCategory] = useState<ApiCategory | null>(null);
+  const [browseCategory, setBrowseCategory] = useState<ApiCategory | null>(null);
+  const [subMedia, setSubMedia] = useState<ApiCategory[]>([]);
   const [allProducts, setAllProducts] = useState<ReturnType<typeof toProductCard>[]>([]);
   const [loadingCat, setLoadingCat] = useState(true);
   const [loadingProducts, setLoadingProducts] = useState(true);
@@ -84,7 +87,11 @@ export default function CategoryProductsScreen() {
         limit: CATEGORY_PAGE,
         subcategory: activeSub === 'all' ? undefined : activeSub,
       });
-      const raw = res?.products || (res as any) || [];
+      if (page === 1) {
+        if (res.category) setBrowseCategory(res.category);
+        if (res.subcategories.length) setSubMedia(res.subcategories);
+      }
+      const raw = res?.products || [];
       return Array.isArray(raw) ? raw.map(toProductCard) : [];
     },
     [categoryId, activeSub],
@@ -144,6 +151,14 @@ export default function CategoryProductsScreen() {
     return [];
   }, [category]);
 
+  const activeSubcategory = useMemo(() => {
+    if (activeSub === 'all') return null;
+    const fromMedia = subMedia.find(s => (s.slug || s._id) === activeSub);
+    const fromChildren = category?.children?.find(c => (c.slug || c._id) === activeSub);
+    if (!fromMedia && !fromChildren) return null;
+    return { ...(fromChildren || { _id: activeSub, name: '' }), ...fromMedia };
+  }, [activeSub, subMedia, category]);
+
   const list = useMemo(() => applyProductFilters(allProducts, filters), [allProducts, filters]);
   const activeCount = countActiveFilters(filters);
 
@@ -194,10 +209,21 @@ export default function CategoryProductsScreen() {
     </View>
   );
 
+  const mediaHeader = (
+    <CategoryMediaHeader
+      categorySlug={browseCategory?.slug || category?.slug || categoryId}
+      categoryName={category?.name || browseCategory?.name || sectionTitle}
+      categoryImage={browseCategory?.bannerImage || browseCategory?.image || category?.image}
+      subcategory={activeSubcategory}
+    />
+  );
+
   const renderMain = () => {
     if (loadError) {
       return (
-        <StateView
+        <>
+          {mediaHeader}
+          <StateView
           kind="error"
           title="Couldn't load products"
           message="Check your connection and try again."
@@ -205,11 +231,14 @@ export default function CategoryProductsScreen() {
           onCta={() => setReloadKey(k => k + 1)}
           icon="wifiOff"
         />
+        </>
       );
     }
     if (allProducts.length === 0) {
       return (
-        <StateView
+        <>
+          {mediaHeader}
+          <StateView
           kind="empty"
           title="No products here yet"
           message="This category is being restocked. Check back soon."
@@ -217,11 +246,14 @@ export default function CategoryProductsScreen() {
           onCta={() => goTab('home')}
           icon="box"
         />
+        </>
       );
     }
     if (list.length === 0) {
       return (
-        <StateView
+        <>
+          {mediaHeader}
+          <StateView
           kind="empty"
           title="No products match"
           message="Try another sub-category or clear filters."
@@ -229,6 +261,7 @@ export default function CategoryProductsScreen() {
           onCta={resetFilters}
           icon="filter"
         />
+        </>
       );
     }
     return (
@@ -237,6 +270,7 @@ export default function CategoryProductsScreen() {
         contentContainerStyle={styles.grid}
         showsVerticalScrollIndicator={false}
       >
+        <View style={styles.mediaWrap}>{mediaHeader}</View>
         {list.map(p => (
           <View key={p.id} style={styles.gridItem}>
             <ProductCard
@@ -459,6 +493,7 @@ const styles = StyleSheet.create({
   },
   toolBadgeLabel: { fontFamily: fontFamily.bold, fontSize: 9.5, color: colors.white },
   gridScroll: { flex: 1 },
+  mediaWrap: { width: '100%' },
   // 48% + space-between keeps two columns on every width without a gap
   // pushing the second card onto its own row.
   grid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', rowGap: 10, paddingBottom: 16 },

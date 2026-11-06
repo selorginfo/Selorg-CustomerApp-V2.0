@@ -42,6 +42,11 @@ export interface WorldlineCheckoutProps {
   redirectUrl?: string | null;
   onComplete: (payload: { url: string; response?: Record<string, unknown> }) => void;
   onCancel: () => void;
+  /**
+   * Order checkout shows UPI, cards, and net banking together.
+   * Wallet top-up leaves this off so the picked method stays scoped.
+   */
+  openAllPaymentModes?: boolean;
   /** Optional testID for the Close / cancel control. */
   cancelTestID?: string;
 }
@@ -56,21 +61,26 @@ export default function WorldlineCheckoutWebView({
   redirectUrl,
   onComplete,
   onCancel,
+  openAllPaymentModes,
   cancelTestID,
 }: WorldlineCheckoutProps) {
   const [loading, setLoading] = useState(true);
   const completed = useRef(false);
+  const painted = useRef(false);
 
   React.useEffect(() => {
     if (visible) {
       completed.current = false;
+      painted.current = false;
       setLoading(true);
     }
   }, [visible, sessionPayload, redirectUrl]);
 
-  const checkoutHtml = sessionPayload ? buildPaynimoCheckoutHtml(sessionPayload) : null;
+  const checkoutHtml = sessionPayload
+    ? buildPaynimoCheckoutHtml(sessionPayload, openAllPaymentModes ? { paymentMode: 'all' } : undefined)
+    : null;
   const source = checkoutHtml
-    ? { html: checkoutHtml }
+    ? { html: checkoutHtml, baseUrl: 'https://www.paynimo.com/' }
     : redirectUrl
       ? { uri: redirectUrl }
       : null;
@@ -128,8 +138,13 @@ export default function WorldlineCheckoutWebView({
       ) : null}
       <WebView
         source={source}
-        onLoadStart={() => setLoading(true)}
-        onLoadEnd={() => setLoading(false)}
+        onLoadStart={() => {
+          if (!painted.current) setLoading(true);
+        }}
+        onLoadEnd={() => {
+          painted.current = true;
+          setLoading(false);
+        }}
         onError={() => setLoading(false)}
         onHttpError={() => setLoading(false)}
         onNavigationStateChange={onNavigationStateChange}
@@ -156,6 +171,10 @@ export default function WorldlineCheckoutWebView({
         onMessage={event => {
           try {
             const msg = JSON.parse(event.nativeEvent.data);
+            if (msg?.type === 'opened' || msg?.type === 'error') {
+              painted.current = true;
+              setLoading(false);
+            }
             if (msg?.type === 'gateway' && msg.detail && !completed.current) {
               completed.current = true;
               onComplete({ url: '', response: msg.detail as Record<string, unknown> });
@@ -164,9 +183,9 @@ export default function WorldlineCheckoutWebView({
             // ignore
           }
         }}
-        startInLoadingState
         javaScriptEnabled
         domStorageEnabled
+        cacheEnabled
         originWhitelist={['https://*', 'about:blank']}
         mixedContentMode="never"
       />

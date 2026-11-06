@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Image, Pressable, RefreshControl, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { Image, Linking, Pressable, RefreshControl, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import LinearGradient from 'react-native-linear-gradient';
 import { useNavigation } from '@react-navigation/native';
@@ -17,8 +17,11 @@ import {
   type HomeLifestyleItem,
   type ResolvedHomeSection,
 } from '../../utils/homeResolve';
+import { bannerCreativeVideo, isDirectVideoUrl } from '../../utils/videoUrl';
+import { bannerDestination } from '../../utils/bannerNavigation';
 import { resolveListingStock } from '../../utils/catalogMappers';
 import HeroCarousel from '../../components/HeroCarousel';
+import { HomeBannerRail } from '../../components/HomeBannerRail';
 import { checkStockAlerts } from '../../utils/stockAlerts';
 import { useCart } from '../../context/CartContext';
 import { useWishlist } from '../../context/WishlistContext';
@@ -151,18 +154,9 @@ export default function HomeScreen() {
     }
   }, [load, isAuthenticated, refreshActiveOrder]);
 
-  const heroSection = useMemo(() => {
-    const hero = sections.find(isHeroBannerSection);
-    if (hero && hero.kind === 'banners') return hero;
-    return sections.find(s => s.kind === 'banners') as
-      | Extract<ResolvedHomeSection, { kind: 'banners' }>
-      | undefined;
-  }, [sections]);
-
-  const bodySections = useMemo(() => {
-    if (!heroSection) return sections;
-    return sections.filter(s => s.key !== heroSection.key);
-  }, [sections, heroSection]);
+  const heroIndex = useMemo(() => sections.findIndex(isHeroBannerSection), [sections]);
+  const leadSections = heroIndex === -1 ? [] : sections.slice(0, heroIndex + 1);
+  const restSections = heroIndex === -1 ? sections : sections.slice(heroIndex + 1);
 
   const onBell = () => {
     if (isAuthenticated) navigation.navigate('Notifications');
@@ -174,34 +168,34 @@ export default function HomeScreen() {
     else navigation.navigate('EnterMobile', { mode: 'login' });
   };
 
-  const navigateBanner = (b: HomeBanner) => {
-    if (b.redirectType === 'product' && b.redirectValue) {
-      navigation.navigate('ProductDetail', { productId: b.redirectValue });
+  const openDestination = (dest: ReturnType<typeof bannerDestination>, fallbackTitle?: string) => {
+    if (dest.kind === 'product') {
+      navigation.navigate('ProductDetail', { productId: dest.productId });
       return;
     }
-    if (b.redirectType === 'category' && b.redirectValue) {
-      navigation.navigate('CategoryProducts', { categoryId: b.redirectValue });
+    if (dest.kind === 'category') {
+      navigation.navigate('CategoryProducts', { categoryId: dest.categoryId, sub: dest.sub });
       return;
     }
-    if (b.redirectType === 'collection' && b.redirectValue) {
-      navigation.navigate('Collection', { collectionKey: b.redirectValue, title: b.title || 'Collection' });
+    if (dest.kind === 'collection') {
+      navigation.navigate('Collection', { collectionKey: dest.collectionKey, title: dest.title || fallbackTitle });
       return;
     }
-    if (b.link) {
-      const catMatch = b.link.match(/\/categor(?:y|ies)\/([^/?#]+)/i);
-      if (catMatch?.[1]) {
-        navigation.navigate('CategoryProducts', { categoryId: decodeURIComponent(catMatch[1]) });
-        return;
-      }
-      const prodMatch = b.link.match(/\/products?\/([^/?#]+)/i);
-      if (prodMatch?.[1]) {
-        navigation.navigate('ProductDetail', { productId: decodeURIComponent(prodMatch[1]) });
-        return;
-      }
+    if (dest.kind === 'search') {
+      navigation.navigate('Search', dest.q ? { q: dest.q } : undefined);
+      return;
+    }
+    if (dest.kind === 'url') {
+      Linking.openURL(dest.url).catch(() => undefined);
+      return;
     }
     if (categories[0]) {
       navigation.navigate('CategoryProducts', { categoryId: categories[0].slug || categories[0]._id });
     }
+  };
+
+  const navigateBanner = (b: HomeBanner) => {
+    openDestination(bannerDestination(b), b.title || 'Collection');
   };
 
   const navigateLifestyle = (item: HomeLifestyleItem) => {
@@ -280,73 +274,128 @@ export default function HomeScreen() {
     </View>
   );
 
-  // Every hero banner with artwork, as a swipeable auto-advancing carousel.
+  // Every hero banner with artwork. An MP4 creative plays; a still stays a photo.
   const renderHero = (banners: HomeBanner[]) => {
-    const withArt = banners
-      .map((b, i) => ({ b, uri: bannerImageUri(b), key: b._id || b.bannerId || `hero-${i}` }))
-      .filter((x): x is { b: HomeBanner; uri: string; key: string } => !!x.uri);
-    if (!withArt.length) return null;
+    const slides = banners.flatMap((b, i) => {
+      const key = b._id || b.bannerId || `hero-${i}`;
+      const video = bannerCreativeVideo(b);
+      const still = bannerImageUri(b);
+      const poster = b.thumbnailUrl && !isDirectVideoUrl(b.thumbnailUrl) ? b.thumbnailUrl : undefined;
+      const rawVideo = (b.videoUrl || '').trim();
+      const linkedVideo = !video && isDirectVideoUrl(rawVideo) ? rawVideo : undefined;
+      if (video) {
+        return [{
+          key,
+          uri: video,
+          video: true,
+          poster,
+          playback: b.videoPlayback,
+          fallbackVideo: undefined as string | undefined,
+          banner: b,
+        }];
+      }
+      if (still) {
+        return [{
+          key,
+          uri: still,
+          video: false,
+          poster,
+          playback: b.videoPlayback,
+          fallbackVideo: linkedVideo,
+          banner: b,
+        }];
+      }
+      return [];
+    });
+    if (!slides.length) return null;
+    const width = screenW - 32;
+    const videoHero = slides.some(s => s.video);
+    const height = videoHero ? Math.round((width * 9) / 16) : 168;
     return (
-      <View style={styles.heroCard}>
+      <View style={[styles.heroCard, videoHero && styles.heroCardVideo, { height }]}>
         <HeroCarousel
           testID="home-hero-banner"
-          slides={withArt.map(x => ({ key: x.key, uri: x.uri }))}
-          width={screenW - 32}
-          height={168}
-          onPress={i => navigateBanner(withArt[i].b)}
+          slides={slides.map(s => ({
+            key: s.key,
+            uri: s.uri,
+            video: s.video,
+            poster: s.poster,
+            playback: s.playback,
+            fallbackVideo: s.fallbackVideo,
+          }))}
+          width={width}
+          height={height}
+          onPress={i => {
+            const slide = slides[i];
+            if (!slide || slide.video) return;
+            navigateBanner(slide.banner);
+          }}
         />
       </View>
     );
   };
 
   const renderBannerRow = (section: Extract<ResolvedHomeSection, { kind: 'banners' }>) => (
-    <View key={section.key} style={styles.section} testID={`home-banners-${section.key}`}>
-      {section.label ? (
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>{section.label}</Text>
-        </View>
-      ) : null}
-      <ScrollView
-        horizontal
-        nestedScrollEnabled
-        directionalLockEnabled
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.bannerRail}
-      >
-        {section.items.map((b, i) => {
-          const uri = bannerImageUri(b);
-          return (
-            <Pressable
-              key={b._id || b.bannerId || `${section.key}-${i}`}
-              style={styles.promoBannerCard}
-              onPress={() => navigateBanner(b)}
-              testID={`home-banner-${b.bannerId || i}`}
-            >
-              {uri ? (
-                <Image source={{ uri }} style={styles.promoBannerImage} resizeMode="cover" />
-              ) : (
-                <View style={[styles.promoBannerImage, { backgroundColor: colors.tint }]} />
-              )}
-              {(b.title || b.subtitle) && (
-                <View style={styles.promoBannerText}>
-                  {b.title ? (
-                    <Text style={styles.promoBannerTitle} numberOfLines={2}>
-                      {b.title}
-                    </Text>
-                  ) : null}
-                  {b.subtitle ? (
-                    <Text style={styles.promoBannerSub} numberOfLines={1}>
-                      {b.subtitle}
-                    </Text>
-                  ) : null}
-                </View>
-              )}
-            </Pressable>
-          );
-        })}
-      </ScrollView>
-    </View>
+    <HomeBannerRail
+      key={section.key}
+      sectionKey={section.key}
+      items={section.items}
+      layout={section.layout}
+      onPress={navigateBanner}
+    />
   );
+
+  const renderSection = (section: ResolvedHomeSection) => {
+    if (section.kind === 'announcement') {
+      const dest = section.link ? bannerDestination({ link: section.link, title: section.label }) : null;
+      const body = (
+        <View style={styles.announcement} testID={`home-announcement-${section.key}`}>
+          <Text style={styles.announcementText}>{section.text}</Text>
+        </View>
+      );
+      if (!dest || dest.kind === 'none') return <View key={section.key}>{body}</View>;
+      return (
+        <Pressable key={section.key} onPress={() => openDestination(dest, section.label)}>
+          {body}
+        </Pressable>
+      );
+    }
+    if (section.kind === 'banners' && isHeroBannerSection(section)) {
+      return <View key={section.key}>{renderHero(section.items)}</View>;
+    }
+    if (section.kind === 'banners') return renderBannerRow(section);
+    if (section.kind === 'lifestyle') return renderLifestyle(section);
+    if (section.kind === 'products' && section.error && section.products.length === 0) {
+      return (
+        <View key={section.key} style={styles.section} testID={`home-products-${section.key}`}>
+          <Text style={styles.sectionTitle}>{section.label}</Text>
+          <Text style={styles.sectionError}>Couldn't load this section. Pull to refresh.</Text>
+        </View>
+      );
+    }
+    if (section.kind === 'products' && section.products.length > 0) {
+      return (
+        <View key={section.key} style={styles.section} testID={`home-products-${section.key}`}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>{section.label}</Text>
+            <Pressable
+              onPress={() =>
+                navigation.navigate('Collection', {
+                  collectionKey: section.key,
+                  title: section.label,
+                })
+              }
+              hitSlop={6}
+            >
+              <Text style={styles.seeAll}>See all</Text>
+            </Pressable>
+          </View>
+          {renderProductGrid(section.products)}
+        </View>
+      );
+    }
+    return null;
+  };
 
   const renderLifestyle = (section: Extract<ResolvedHomeSection, { kind: 'lifestyle' }>) => (
     <View key={section.key} style={styles.section} testID={`home-lifestyle-${section.key}`}>
@@ -386,10 +435,52 @@ export default function HomeScreen() {
     categories.length > 0 ||
     sections.some(
       s =>
-        (s.kind === 'products' && s.products.length > 0) ||
+        s.kind === 'announcement' ||
+        (s.kind === 'products' && (s.products.length > 0 || s.error)) ||
         (s.kind === 'banners' && s.items.length > 0) ||
         (s.kind === 'lifestyle' && s.items.length > 0),
     );
+
+  const categoryRail = categories.length > 0 ? (
+    <View style={styles.section} testID="home-categories">
+      <View style={styles.sectionHeader}>
+        <Text style={styles.sectionTitle}>Shop by category</Text>
+        <Pressable
+          onPress={() => (navigation as { navigate: (a: string, b?: object) => void }).navigate('Main', { screen: 'CategoriesTab' })}
+          hitSlop={6}
+        >
+          <Text style={styles.seeAll}>See all</Text>
+        </Pressable>
+      </View>
+      <ScrollView
+        horizontal
+        nestedScrollEnabled
+        directionalLockEnabled
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.catRail}
+      >
+        {categories.map(c => (
+          <Pressable
+            key={c._id}
+            style={styles.catItem}
+            onPress={() => navigation.navigate('CategoryProducts', { categoryId: c.slug || c._id })}
+            testID={`home-category-${c.slug || c._id}`}
+          >
+            <View style={styles.catImageWrap}>
+              {c.image ? (
+                <Image source={{ uri: c.image }} style={styles.catImage} resizeMode="cover" />
+              ) : (
+                <View style={[styles.catImage, { backgroundColor: '#FFFFFF' }]} />
+              )}
+            </View>
+            <Text style={styles.catLabel} numberOfLines={2}>
+              {c.name}
+            </Text>
+          </Pressable>
+        ))}
+      </ScrollView>
+    </View>
+  ) : null;
 
   return (
     <SafeAreaView style={styles.root} edges={['top']}>
@@ -500,77 +591,9 @@ export default function HomeScreen() {
           </View>
         ) : (
           <>
-            {heroSection?.kind === 'banners' ? renderHero(heroSection.items) : null}
-
-            {categories.length > 0 ? (
-              <View style={styles.section} testID="home-categories">
-                <View style={styles.sectionHeader}>
-                  <Text style={styles.sectionTitle}>Shop by category</Text>
-                  <Pressable
-                    onPress={() => (navigation as { navigate: (a: string, b?: object) => void }).navigate('Main', { screen: 'CategoriesTab' })}
-                    hitSlop={6}
-                  >
-                    <Text style={styles.seeAll}>See all</Text>
-                  </Pressable>
-                </View>
-                <ScrollView
-                  horizontal
-                  nestedScrollEnabled
-                  directionalLockEnabled
-                  showsHorizontalScrollIndicator={false}
-                  contentContainerStyle={styles.catRail}
-                >
-                  {categories.map(c => (
-                    <Pressable
-                      key={c._id}
-                      style={styles.catItem}
-                      onPress={() => navigation.navigate('CategoryProducts', { categoryId: c.slug || c._id })}
-                      testID={`home-category-${c.slug || c._id}`}
-                    >
-                      <View style={styles.catImageWrap}>
-                        {c.image ? (
-                          <Image source={{ uri: c.image }} style={styles.catImage} resizeMode="cover" />
-                        ) : (
-                          <View style={[styles.catImage, { backgroundColor: '#FFFFFF' }]} />
-                        )}
-                      </View>
-                      <Text style={styles.catLabel} numberOfLines={2}>
-                        {c.name}
-                      </Text>
-                    </Pressable>
-                  ))}
-                </ScrollView>
-              </View>
-            ) : null}
-
-            {bodySections.map(section => {
-              if (section.kind === 'banners') return renderBannerRow(section);
-              if (section.kind === 'lifestyle') return renderLifestyle(section);
-              if (section.kind === 'products' && section.products.length > 0) {
-                return (
-                  <View key={section.key} style={styles.section} testID={`home-products-${section.key}`}>
-                    <View style={styles.sectionHeader}>
-                      <Text style={styles.sectionTitle}>{section.label}</Text>
-                      <Pressable
-                        onPress={() =>
-                          // Pass the section key: Collection resolves both section
-                          // and collection keys (a slug alone 404s for non-collection sections).
-                          navigation.navigate('Collection', {
-                            collectionKey: section.key,
-                            title: section.label,
-                          })
-                        }
-                        hitSlop={6}
-                      >
-                        <Text style={styles.seeAll}>See all</Text>
-                      </Pressable>
-                    </View>
-                    {renderProductGrid(section.products)}
-                  </View>
-                );
-              }
-              return null;
-            })}
+            {leadSections.map(renderSection)}
+            {categoryRail}
+            {restSections.map(renderSection)}
           </>
         )}
       </ScrollView>
@@ -643,11 +666,18 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     marginHorizontal: 16,
     height: 168,
+    backgroundColor: colors.white,
     shadowColor: colors.primaryDark,
     shadowOpacity: 0.5,
     shadowRadius: 20,
     shadowOffset: { width: 0, height: 12 },
     elevation: 5,
+  },
+  // Android drops a video drawn under elevation. Keep the card flat and black.
+  heroCardVideo: {
+    backgroundColor: '#000000',
+    elevation: 0,
+    shadowOpacity: 0,
   },
   heroImage: { width: '100%', height: '100%' },
 
@@ -660,6 +690,24 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
   },
   sectionTitle: { fontFamily: fontFamily.bold, fontSize: 18, color: colors.text, flex: 1, paddingRight: 8 },
+  sectionError: {
+    fontFamily: fontFamily.semibold,
+    fontSize: 13,
+    color: colors.textMuted,
+    paddingHorizontal: 16,
+    marginTop: 4,
+  },
+  announcement: {
+    marginTop: 22,
+    marginHorizontal: 16,
+    borderRadius: radii.lg,
+    backgroundColor: '#f3faf4',
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  announcementText: { fontFamily: fontFamily.bold, fontSize: 13, color: colors.primary, textAlign: 'center' },
   seeAll: { fontFamily: fontFamily.bold, fontSize: 13, color: colors.primary },
 
   catRail: { paddingHorizontal: 16, gap: 12 },
@@ -684,26 +732,6 @@ const styles = StyleSheet.create({
 
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingHorizontal: 16 },
   gridItem: { flexGrow: 0, flexShrink: 0 },
-
-  bannerRail: { paddingHorizontal: 16, gap: 12 },
-  promoBannerCard: {
-    width: 220,
-    height: 120,
-    borderRadius: radii.xl,
-    overflow: 'hidden',
-    backgroundColor: colors.tint,
-  },
-  promoBannerImage: { ...StyleSheet.absoluteFillObject },
-  promoBannerText: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    padding: 10,
-    backgroundColor: 'rgba(20,35,26,0.55)',
-  },
-  promoBannerTitle: { fontFamily: fontFamily.bold, fontSize: 13, color: colors.white },
-  promoBannerSub: { fontFamily: fontFamily.semibold, fontSize: 11, color: 'rgba(255,255,255,0.85)', marginTop: 2 },
 
   curatedRail: { paddingHorizontal: 16, gap: 12 },
   curatedCard: {

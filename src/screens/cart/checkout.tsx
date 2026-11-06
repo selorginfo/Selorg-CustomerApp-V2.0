@@ -119,7 +119,8 @@ export default function CheckoutScreen() {
   useFocusEffect(
     useCallback(() => {
       refreshCart();
-    }, [refreshCart]),
+      void wallet.reloadWallet();
+    }, [refreshCart, wallet.reloadWallet]),
   );
 
 
@@ -430,14 +431,16 @@ export default function CheckoutScreen() {
           <View style={styles.methodCard}>
             {PAY_METHODS.map((m, i) => {
               const on = payMethod === m.id;
-              const low = m.id === 'wallet' && !walletCovers;
+              const low = m.id === 'wallet' && wallet.ready && !walletCovers;
               const sub =
                 m.id === 'online'
                   ? 'UPI, cards & net banking'
                   : m.id === 'wallet'
-                    ? low
-                      ? 'Low balance · top up or pick another'
-                      : `${formatCurrency(wallet.wallet.balance)} available`
+                    ? !wallet.ready
+                      ? 'Checking balance…'
+                      : low
+                        ? 'Low balance · top up or pick another'
+                        : `${formatCurrency(wallet.wallet.balance)} available`
                     : 'Pay when it arrives';
               return (
                 <Pressable

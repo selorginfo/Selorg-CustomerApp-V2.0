@@ -13,6 +13,8 @@ const TOKEN_SERVICE = 'selorg.accessToken';
 const INSTALL_MARKER = 'installMarker';
 
 let memoryToken: string | null | undefined;
+/** Bumped on every token write so a slow Keychain read cannot replace a login that just finished. */
+let tokenEpoch = 0;
 
 type KeychainModule = {
   getGenericPassword: (options: { service: string }) => Promise<false | { password: string }>;
@@ -28,23 +30,31 @@ function loadKeychain(): KeychainModule | null {
   }
 }
 
-async function writeToken(value: string): Promise<void> {
+async function writeToken(value: string, epoch: number): Promise<void> {
   const keychain = loadKeychain();
+  if (tokenEpoch !== epoch) return;
   if (!keychain) {
-    mmkvStorage.setItem('accessToken', value);
+    if (memoryToken === value) mmkvStorage.setItem('accessToken', value);
     return;
   }
   try {
     await keychain.setGenericPassword('session', value, { service: TOKEN_SERVICE });
+    if (tokenEpoch !== epoch || memoryToken !== value) {
+      if (memoryToken) {
+        await keychain.setGenericPassword('session', memoryToken, { service: TOKEN_SERVICE });
+      }
+      return;
+    }
     mmkvStorage.removeItem('accessToken');
   } catch {
-    mmkvStorage.setItem('accessToken', value);
+    if (tokenEpoch === epoch && memoryToken === value) mmkvStorage.setItem('accessToken', value);
   }
 }
 
 export const Storage = {
   /** Load the session token from Keychain before the first authenticated read. */
   hydrate: async (): Promise<void> => {
+    const epoch = tokenEpoch;
     const keychain = loadKeychain();
     const legacy = mmkvStorage.getItem('accessToken');
     const seenThisInstall = mmkvStorage.getItem(INSTALL_MARKER);
@@ -57,27 +67,32 @@ export const Storage = {
         } catch {
           // A missing native module must not block launch.
         }
+        if (tokenEpoch !== epoch) return;
         memoryToken = null;
         return;
       }
     }
+    if (tokenEpoch !== epoch) return;
     if (!keychain) {
       memoryToken = legacy;
       return;
     }
     try {
       const creds = await keychain.getGenericPassword({ service: TOKEN_SERVICE });
+      if (tokenEpoch !== epoch) return;
       if (creds && creds.password) {
         memoryToken = creds.password;
         mmkvStorage.removeItem('accessToken');
         return;
       }
     } catch {
+      if (tokenEpoch !== epoch) return;
       memoryToken = legacy;
       return;
     }
+    if (tokenEpoch !== epoch) return;
     memoryToken = legacy;
-    if (legacy) await writeToken(legacy);
+    if (legacy) await writeToken(legacy, epoch);
   },
 
   getItem: (key: StorageKey): string | null => {
@@ -90,8 +105,9 @@ export const Storage = {
 
   setItem: (key: StorageKey, value: string): void => {
     if (key === 'accessToken') {
+      tokenEpoch += 1;
       memoryToken = value;
-      void writeToken(value);
+      void writeToken(value, tokenEpoch);
       return;
     }
     mmkvStorage.setItem(key, value);
@@ -99,6 +115,7 @@ export const Storage = {
 
   removeItem: (key: StorageKey): void => {
     if (key === 'accessToken') {
+      tokenEpoch += 1;
       memoryToken = null;
       const keychain = loadKeychain();
       keychain?.resetGenericPassword({ service: TOKEN_SERVICE }).catch(() => {});
@@ -108,6 +125,7 @@ export const Storage = {
 
   /** Wipe every auth-related key — call on logout / 401. */
   clearAuth: (): void => {
+    tokenEpoch += 1;
     memoryToken = null;
     const keychain = loadKeychain();
     keychain?.resetGenericPassword({ service: TOKEN_SERVICE }).catch(() => {});

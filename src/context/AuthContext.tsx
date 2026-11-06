@@ -160,6 +160,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   useEffect(() => {
     (async () => {
       try {
+        await Storage.hydrate();
         const token = Storage.getItem('accessToken');
         if (token) {
           await refreshProfile();

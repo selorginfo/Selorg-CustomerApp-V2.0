@@ -204,7 +204,13 @@ const performFetch = async (finalUrl: string, options: any, requestId: number) =
     }
     logResponse(requestId, response.status, finalUrl, errorBody);
 
-    if (response.status === 401) _onUnauthorized?.();
+    if (response.status === 401) {
+      // A 401 for a token that login has already replaced must not sign the
+      // new session out — that was dropping the wallet bearer right after OTP.
+      const sent = String(headers.Authorization || '').replace(/^Bearer\s+/i, '').trim();
+      const current = String(Storage.getItem('accessToken') || '').trim();
+      if (current && sent === current) _onUnauthorized?.();
+    }
 
     return Promise.reject(
       normalizeApiError({

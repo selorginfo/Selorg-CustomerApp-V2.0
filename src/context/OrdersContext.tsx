@@ -19,6 +19,7 @@ import { toLocalOrder } from '../utils/mappers';
 import { showToast } from '../utils/toast';
 import { usePager } from '../utils/usePager';
 import { getErrorCode, getErrorMessage } from '../utils/apiError';
+import { settlementKind, wantedSettlement } from '../utils/paymentAttempt';
 import {
   parseReturnUrl,
   hasWorldlineGatewayPayload,
@@ -97,6 +98,8 @@ interface OrdersContextType {
   activeOrder: Order | null;
   payState: PayState;
   payError: string;
+  /** Method that produced the current failure. A later COD/wallet choice must not inherit it. */
+  failedMethod: PayMethod | null;
   gatewaySessionPayload: Record<string, unknown> | null;
   /** Order the open Worldline session belongs to; survives activeOrder refreshes. */
   pendingGatewayOrderId: string | null;
@@ -134,12 +137,14 @@ function cartSignature(
   addressId: string,
   coupon: string | null | undefined,
   tip: number | undefined,
+  method: PayMethod,
 ): string {
   const lines = items
     .map(i => `${i.productId}:${i.variantId || ''}:${i.quantity}`)
     .sort()
     .join('|');
-  return [lines, addressId, coupon || '', tip || 0].join('#');
+  // Payment method is part of the key so a COD retry cannot replay the failed UPI order.
+  return [lines, addressId, coupon || '', tip || 0, method].join('#');
 }
 
 function paymentMethodType(method: PayMethod): PaymentMethodType {
@@ -160,6 +165,7 @@ export const OrdersProvider: React.FC<{ children: ReactNode }> = ({ children }) 
   const [activeOrder, setActiveOrder] = useState<Order | null>(null);
   const [payState, setPayState] = useState<PayState>('idle');
   const [payError, setPayError] = useState('');
+  const [failedMethod, setFailedMethod] = useState<PayMethod | null>(null);
   const [gatewaySessionPayload, setGatewaySessionPayload] = useState<Record<string, unknown> | null>(null);
   const [pendingGatewayOrderId, setPendingGatewayOrderId] = useState<string | null>(null);
   const [pendingGatewayTxnId, setPendingGatewayTxnId] = useState<string | null>(null);
@@ -219,6 +225,9 @@ export const OrdersProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     unpaidOnlineOrderRef.current = null;
     placeIdempotencyKeyRef.current = null;
     placeSignatureRef.current = null;
+    setFailedMethod(null);
+    setPayState('idle');
+    setPayError('');
     setOrders([]);
     setActiveOrder(null);
     if (!userId) return;
@@ -234,8 +243,30 @@ export const OrdersProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       if (cart.items.length === 0) return { success: false, message: 'Your cart is empty' };
       if (!selectedAddressId) return { success: false, message: 'Please select a delivery address' };
 
+      if (!Storage.getItem('accessToken')) {
+        const msg = 'Please sign in again to place this order.';
+        setPayState('error');
+        setPayError(msg);
+        setFailedMethod(method);
+        return { success: false, message: msg };
+      }
+
       setPayState('processing');
       setPayError('');
+      setFailedMethod(null);
+
+      // COD and wallet never go through Worldline. Drop the failed UPI session
+      // so its status cannot be applied to this order.
+      if (method !== 'online') {
+        const staleOnline = unpaidOnlineOrderRef.current;
+        unpaidOnlineOrderRef.current = null;
+        setGatewaySessionPayload(null);
+        setPendingGatewayOrderId(null);
+        setPendingGatewayTxnId(null);
+        if (staleOnline?.id) {
+          await ordersApi.cancelOrder(staleOnline.id, 'Switched to another payment method').catch(() => {});
+        }
+      }
 
       const payload: CreateOrderPayload = {
         items: cart.items.map(i => ({
@@ -251,7 +282,7 @@ export const OrdersProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         customerPhone: receiver?.phone?.trim() || undefined,
       };
 
-      const signature = cartSignature(payload.items, selectedAddressId, cart.coupon, cart.tip);
+      const signature = cartSignature(payload.items, selectedAddressId, cart.coupon, cart.tip, method);
       if (placeSignatureRef.current && placeSignatureRef.current !== signature) {
         placeIdempotencyKeyRef.current = null;
       }
@@ -278,7 +309,10 @@ export const OrdersProvider: React.FC<{ children: ReactNode }> = ({ children }) 
           }
           unpaidOnlineOrderRef.current = null;
           if (reusable) {
-            const session = await paymentsApi.createWorldlineSession({ orderId: reusable.id });
+            const session = await paymentsApi.createWorldlineSession({
+              orderId: reusable.id,
+              paymentMode: 'all',
+            });
             if (!session.sessionPayload) {
               throw new Error('Payment gateway unavailable');
             }
@@ -308,6 +342,22 @@ export const OrdersProvider: React.FC<{ children: ReactNode }> = ({ children }) 
             raw = await ordersApi.createOrder(payload, {
               idempotencyKey: placeIdempotencyKeyRef.current,
             });
+            const kind = settlementKind(raw);
+            const wanted = wantedSettlement(method);
+            if (kind !== 'unknown' && kind !== wanted) {
+              // Stored idempotency response from the failed UPI order. Do not
+              // present that order as this COD or wallet payment.
+              placeIdempotencyKeyRef.current = null;
+              raw = null;
+              if (attempt === 0) continue;
+              throw new Error(
+                method === 'cod'
+                  ? 'Cash on delivery could not be started. Please try again.'
+                  : method === 'wallet'
+                    ? 'Wallet payment could not be started. Please try again.'
+                    : 'Could not place order. Please retry.',
+              );
+            }
             break;
           } catch (err: unknown) {
             const msg = getErrorMessage(err, 'Could not place order. Please retry.');
@@ -321,13 +371,46 @@ export const OrdersProvider: React.FC<{ children: ReactNode }> = ({ children }) 
             throw err;
           }
         }
-        if (!raw) return { success: false, message: 'Could not place order. Please retry.' };
+        if (!raw) {
+          const msg = 'Could not place order. Please retry.';
+          setPayState('error');
+          setPayError(msg);
+          setFailedMethod(method);
+          return { success: false, message: msg };
+        }
         placeIdempotencyKeyRef.current = null;
         const order = toLocalOrder(raw);
 
+        if (method === 'wallet') {
+          const status = String(raw.paymentStatus || '').toLowerCase();
+          const covered =
+            (status === 'paid' || (settlementKind(raw) === 'wallet' && status !== 'failed')) &&
+            raw.requiresOnlinePayment !== true;
+          if (!covered) {
+            const msg = raw.requiresOnlinePayment
+              ? 'Your wallet did not cover this order. Add money or choose another method.'
+              : 'Wallet payment was not completed. Your balance was not charged.';
+            setPayState('error');
+            setPayError(msg);
+            setFailedMethod('wallet');
+            return { success: false, message: msg, order };
+          }
+        }
+
+        if (method === 'cod' && String(raw.paymentStatus || '').toLowerCase() === 'failed') {
+          const msg = 'Cash on delivery was not accepted. Please try again.';
+          setPayState('error');
+          setPayError(msg);
+          setFailedMethod('cod');
+          return { success: false, message: msg, order };
+        }
+
         if (method === 'online') {
           unpaidOnlineOrderRef.current = { id: order.id, signature };
-          const session = await paymentsApi.createWorldlineSession({ orderId: order.id });
+          const session = await paymentsApi.createWorldlineSession({
+            orderId: order.id,
+            paymentMode: 'all',
+          });
           if (!session.sessionPayload) {
             throw new Error('Payment gateway unavailable');
           }
@@ -355,6 +438,7 @@ export const OrdersProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         const msg = getErrorMessage(err, 'Could not place order. Please retry.');
         setPayState('error');
         setPayError(msg);
+        setFailedMethod(method);
         // Duplicate-key / conflict responses are safe to retry with a fresh key.
         if (/orderNumber already exists|duplicate|E11000|conflict/i.test(msg)) {
           placeIdempotencyKeyRef.current = null;
@@ -417,6 +501,7 @@ export const OrdersProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         setPendingGatewayOrderId(null);
         setPendingGatewayTxnId(null);
         setPayState(paid ? 'success' : 'failed');
+        setFailedMethod(paid ? null : 'online');
         if (paid) unpaidOnlineOrderRef.current = null;
         if (!paid) {
           const msg =
@@ -433,6 +518,7 @@ export const OrdersProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         const msg = getErrorMessage(err, 'Payment confirmation failed');
         setPayState('failed');
         setPayError(msg);
+        setFailedMethod('online');
         return { success: false, message: msg };
       }
     },
@@ -455,11 +541,13 @@ export const OrdersProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     placeIdempotencyKeyRef.current = null;
     setPayState('idle');
     setPayError('');
+    setFailedMethod(null);
   }, [pendingGatewayOrderId, pendingGatewayTxnId]);
 
   const retryPayment = useCallback(() => {
     setPayState('idle');
     setPayError('');
+    setFailedMethod(null);
     setGatewaySessionPayload(null);
   }, []);
 
@@ -554,6 +642,7 @@ export const OrdersProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       activeOrder,
       payState,
       payError,
+      failedMethod,
       gatewaySessionPayload,
       pendingGatewayOrderId,
       placeOrder,
@@ -578,6 +667,7 @@ export const OrdersProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       activeOrder,
       payState,
       payError,
+      failedMethod,
       gatewaySessionPayload,
       pendingGatewayOrderId,
       placeOrder,
