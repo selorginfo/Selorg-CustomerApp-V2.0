@@ -10,7 +10,7 @@ import { colors, fontFamily, radii } from '../../theme';
 import { formatCurrency } from '../../utils/format';
 import { showToast } from '../../utils/toast';
 import { parseReturnUrl } from '../../utils/worldline';
-import { onlineFailureBlocksMethod } from '../../utils/paymentAttempt';
+import { onlineFailureBlocksMethod, resolvePayMethod } from '../../utils/paymentAttempt';
 import { useCart } from '../../context/CartContext';
 import { useOrders } from '../../context/OrdersContext';
 import type { PayMethod } from '../../context/OrdersContext';
@@ -33,6 +33,7 @@ export default function PaymentScreen() {
     payError,
     failedMethod,
     placeOrder,
+    payExistingOrder,
     retryPayment,
     gatewaySessionPayload,
     pendingGatewayOrderId,
@@ -67,8 +68,9 @@ export default function PaymentScreen() {
   const walletCovers = wallet.covers(grandTotal);
 
   const handlePay = async (nextMethod?: PayMethod) => {
-    const paying = nextMethod ?? method;
-    if (nextMethod) setMethod(nextMethod);
+    // A press event must not become the method. Only online | cod | wallet count.
+    const paying = resolvePayMethod(nextMethod, method);
+    if (paying !== method) setMethod(paying);
     if (payState === 'processing' || payState === 'awaiting_gateway') return;
     if (paying === 'wallet') {
       const balance = await wallet.reloadWallet();
@@ -81,7 +83,10 @@ export default function PaymentScreen() {
         return;
       }
     }
-    const result = await placeOrder(paying, route.params?.receiver);
+    const resumeOrderId = paying === 'online' ? route.params?.orderId : undefined;
+    const result = resumeOrderId
+      ? await payExistingOrder(resumeOrderId)
+      : await placeOrder(paying, route.params?.receiver);
     if (result.success && result.order && !result.needsGateway) {
       await wallet.reloadWallet();
       goToOrderPlaced(result.order.id);
@@ -244,7 +249,9 @@ export default function PaymentScreen() {
           }
           icon={method === 'cod' ? 'box' : 'lock'}
           disabled={(method === 'wallet' && (!wallet.ready || !walletCovers)) || payState === 'awaiting_gateway'}
-          onPress={handlePay}
+          onPress={() => {
+            void handlePay();
+          }}
         />
       </View>
 

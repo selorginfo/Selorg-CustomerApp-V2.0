@@ -19,7 +19,7 @@ import { toLocalOrder } from '../utils/mappers';
 import { showToast } from '../utils/toast';
 import { usePager } from '../utils/usePager';
 import { getErrorCode, getErrorMessage } from '../utils/apiError';
-import { settlementKind, wantedSettlement } from '../utils/paymentAttempt';
+import { isPayMethod, settlementKind, wantedSettlement } from '../utils/paymentAttempt';
 import {
   parseReturnUrl,
   hasWorldlineGatewayPayload,
@@ -104,6 +104,8 @@ interface OrdersContextType {
   /** Order the open Worldline session belongs to; survives activeOrder refreshes. */
   pendingGatewayOrderId: string | null;
   placeOrder: (method: PayMethod, receiver?: OrderReceiver) => Promise<PlaceOrderResult>;
+  /** Open the gateway for an unpaid online order. Does not create another order. */
+  payExistingOrder: (orderId: string) => Promise<PlaceOrderResult>;
   completeGatewayPayment: (
     orderId: string,
     returnUrlOrResponse: string | Record<string, unknown>,
@@ -242,6 +244,14 @@ export const OrdersProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       }
       if (cart.items.length === 0) return { success: false, message: 'Your cart is empty' };
       if (!selectedAddressId) return { success: false, message: 'Please select a delivery address' };
+
+      if (!isPayMethod(method)) {
+        const msg = 'Choose a payment method and try again.';
+        setPayState('error');
+        setPayError(msg);
+        setFailedMethod(null);
+        return { success: false, message: msg };
+      }
 
       if (!Storage.getItem('accessToken')) {
         const msg = 'Please sign in again to place this order.';
@@ -450,6 +460,59 @@ export const OrdersProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     [payState, cart, selectedAddressId],
   );
 
+  const payExistingOrder = useCallback(
+    async (orderId: string): Promise<PlaceOrderResult> => {
+      if (payState === 'processing' || payState === 'awaiting_gateway') {
+        return { success: false };
+      }
+      if (!orderId) return { success: false, message: 'Order not found' };
+      setPayState('processing');
+      setPayError('');
+      setFailedMethod(null);
+      try {
+        const existing = toLocalOrder(await ordersApi.getOrder(orderId));
+        if (!existing.id) throw new Error('Order not found');
+        if (existing.status === 'cancelled') {
+          throw new Error('This order was cancelled. Place a new order to pay.');
+        }
+        if (existing.paymentStatus === 'paid' || existing.paymentStatus === 'cod_pending') {
+          setActiveOrder(existing);
+          setPayState('success');
+          return { success: true, order: existing };
+        }
+        if (existing.method !== 'online') {
+          throw new Error('This order does not use online payment.');
+        }
+        const session = await paymentsApi.createWorldlineSession({
+          orderId: existing.id,
+          paymentMode: 'all',
+        });
+        if (!session.sessionPayload) throw new Error('Payment gateway unavailable');
+        unpaidOnlineOrderRef.current = { id: existing.id, signature: `resume:${existing.id}` };
+        setPendingGatewayOrderId(existing.id);
+        setPendingGatewayTxnId(session.txnId || null);
+        setGatewaySessionPayload(session.sessionPayload as Record<string, unknown>);
+        setActiveOrder(existing);
+        setPayState('awaiting_gateway');
+        return {
+          success: true,
+          order: existing,
+          needsGateway: true,
+          sessionPayload: session.sessionPayload as Record<string, unknown>,
+          gatewayOrderId: existing.id,
+          gatewayTxnId: session.txnId,
+        };
+      } catch (err: unknown) {
+        const msg = getErrorMessage(err, 'Could not start online payment. Please retry.');
+        setPayState('error');
+        setPayError(msg);
+        setFailedMethod('online');
+        return { success: false, message: msg };
+      }
+    },
+    [payState],
+  );
+
   const completeGatewayPayment = useCallback(
     async (orderId: string, returnUrlOrResponse: string | Record<string, unknown>): Promise<PlaceOrderResult> => {
       setPayState('processing');
@@ -646,6 +709,7 @@ export const OrdersProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       gatewaySessionPayload,
       pendingGatewayOrderId,
       placeOrder,
+      payExistingOrder,
       completeGatewayPayment,
       cancelGatewayPayment,
       retryPayment,
@@ -671,6 +735,7 @@ export const OrdersProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       gatewaySessionPayload,
       pendingGatewayOrderId,
       placeOrder,
+      payExistingOrder,
       completeGatewayPayment,
       cancelGatewayPayment,
       retryPayment,
