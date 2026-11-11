@@ -1,6 +1,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, ReactNode } from 'react';
 import { supportApi } from '../services/support.service';
-import type { SupportTicket, SupportMessage } from '../services/support.service';
+import type { SupportTicket } from '../services/support.service';
+import { toTicket as mapTicket } from '../services/support.contract';
 import { Storage } from '../api/storage';
 import { showToast } from '../utils/toast';
 import { useAuth } from './AuthContext';
@@ -13,6 +14,7 @@ export interface Ticket {
   id: string;
   subject: string;
   status: 'open' | 'resolved' | 'closed';
+  statusLabel: string;
   ts: string;
   rider?: boolean;
   messages: Array<{ from: 'you' | 'agent'; text: string; ts: string }>;
@@ -37,17 +39,7 @@ interface SupportContextType {
 const SupportContext = createContext<SupportContextType | undefined>(undefined);
 
 function toTicket(raw: SupportTicket): Ticket {
-  return {
-    id: raw._id,
-    subject: raw.subject || 'Support request',
-    status: raw.status === 'closed' ? 'resolved' : raw.status,
-    ts: raw.createdAt,
-    messages: (raw.messages || []).map((m: SupportMessage) => ({
-      from: m.from === 'customer' ? 'you' : 'agent',
-      text: m.text || m.message || '',
-      ts: m.createdAt || m.ts || new Date().toISOString(),
-    })),
-  };
+  return mapTicket(raw);
 }
 
 export const SupportProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
@@ -146,9 +138,9 @@ export const SupportProvider: React.FC<{ children: ReactNode }> = ({ children })
   }, [refreshTicket]);
 
   const reopenTicket = useCallback((ticketId: string) => {
-    setTickets(prev => prev.map(t => (t.id === ticketId ? { ...t, status: 'open' } : t)));
+    setTickets(prev => prev.map(t => (t.id === ticketId ? { ...t, status: 'open', statusLabel: 'Open' } : t)));
     supportApi.reopenTicket(ticketId).catch(() => {
-      setTickets(prev => prev.map(t => (t.id === ticketId ? { ...t, status: 'resolved' } : t)));
+      setTickets(prev => prev.map(t => (t.id === ticketId ? { ...t, status: 'resolved', statusLabel: 'Resolved' } : t)));
       showToast('Could not reopen this conversation', 'err');
     });
   }, []);

@@ -11,6 +11,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import RootNavigator from './src/navigation/RootNavigator';
 import AppProviders from './src/context/AppProviders';
 import ToastHost from './src/components/ToastHost';
+import { VideoPlayerProvider } from './src/components/VideoPlayerHost';
 import { useAuth } from './src/context/AuthContext';
 import {
   registerPushTokenIfAvailable,
@@ -89,7 +90,9 @@ function App() {
       />
       <View style={styles.container}>
         <AppProviders>
-          <AppContent />
+          <VideoPlayerProvider>
+            <AppContent />
+          </VideoPlayerProvider>
         </AppProviders>
       </View>
     </SafeAreaProvider>

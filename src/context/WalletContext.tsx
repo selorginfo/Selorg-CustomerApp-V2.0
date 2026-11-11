@@ -10,6 +10,8 @@ import React, {
 
   useMemo,
 
+  useRef,
+
   useState,
 
   ReactNode,
@@ -73,13 +75,16 @@ interface WalletContextType {
   wallet: Wallet;
 
   loading: boolean;
+  /** False until this account's balance has been fetched. ₹0 before that is not "low balance". */
+  ready: boolean;
   hasMore: boolean;
   loadingMore: boolean;
   loadMore: () => Promise<void>;
 
   refreshWallet: () => Promise<void>;
 
-  reloadWallet: () => Promise<void>;
+  /** Fresh balance, or null when the signed-in customer could not be read. */
+  reloadWallet: () => Promise<number | null>;
 
   topUp: (amount: number, method?: TopUpMethod) => Promise<boolean>;
 
@@ -128,10 +133,13 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({ children }) 
   const userId = user?.id || '';
 
   const [balance, setBalance] = useState(0);
+  const balanceRef = useRef(0);
 
   const [txns, setTxns] = useState<WalletTxn[]>([]);
 
   const [loading, setLoading] = useState(false);
+  const [ready, setReady] = useState(false);
+  const accountRef = useRef(userId);
 
   const [topUpSessionPayload, setTopUpSessionPayload] = useState<Record<string, unknown> | null>(null);
 
@@ -150,48 +158,66 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({ children }) 
   const pager = usePager(fetchTxnsPage, TXNS_PAGE, setTxns);
   const { firstPageLoaded } = pager;
 
-  /** Resolves false when the balance could not be fetched. */
-  const loadWallet = useCallback(async (): Promise<boolean> => {
-    if (!Storage.getItem('accessToken')) {
-      setBalance(0);
-      setTxns([]);
-      return false;
+  /** Resolves the balance, or null when this signed-in customer could not be read. */
+  const loadWallet = useCallback(async (): Promise<number | null> => {
+    const forAccount = userId;
+    if (!Storage.getItem('accessToken') || !forAccount) {
+      if (accountRef.current === forAccount) {
+        balanceRef.current = 0;
+        setBalance(0);
+        setTxns([]);
+        setReady(true);
+      }
+      return null;
     }
     setLoading(true);
     try {
-      const [bal, transactions] = await Promise.all([
-        walletApi.getBalance(),
-        walletApi.getTransactions({ page: 1, limit: TXNS_PAGE }),
-      ]);
-      setBalance(bal.balance ?? 0);
-      setTxns((transactions ?? []).map(toTxn));
-      firstPageLoaded((transactions ?? []).length);
-      return true;
+      // Balance is the payment gate. A transactions failure must not wipe it.
+      const bal = await walletApi.getBalance();
+      let transactions: WalletTxn[] = [];
+      try {
+        transactions = ((await walletApi.getTransactions({ page: 1, limit: TXNS_PAGE })) ?? []).map(toTxn);
+      } catch {
+        transactions = [];
+      }
+      if (accountRef.current !== forAccount) return null;
+      const amount = bal.balance;
+      balanceRef.current = amount;
+      setBalance(amount);
+      setTxns(transactions);
+      firstPageLoaded(transactions.length);
+      setReady(true);
+      return amount;
     } catch {
-      // keep previous state
-      return false;
+      if (accountRef.current === forAccount) setReady(true);
+      return null;
     } finally {
-      setLoading(false);
+      if (accountRef.current === forAccount) setLoading(false);
     }
-  }, [firstPageLoaded]);
+  }, [userId, firstPageLoaded]);
 
   // Reload per account: launch, login, logout and account switch.
+  // Do not stamp ₹0 before the fetch — that made a just-logged-in wallet look empty.
   useEffect(() => {
-    setBalance(0);
-    setTxns([]);
-    if (!userId) return;
+    accountRef.current = userId;
+    setReady(false);
+    if (!userId) {
+      balanceRef.current = 0;
+      setBalance(0);
+      setTxns([]);
+      setReady(true);
+      return;
+    }
     loadWallet();
   }, [userId, loadWallet]);
 
   /** Silent re-fetch (screen focus, after paying). */
-  const reloadWallet = useCallback(async () => {
-    await loadWallet();
-  }, [loadWallet]);
+  const reloadWallet = useCallback(async () => loadWallet(), [loadWallet]);
 
   /** User-initiated refresh — reports the real outcome. */
   const refreshWallet = useCallback(async () => {
-    const ok = await loadWallet();
-    if (ok) showToast('Balance updated', 'info');
+    const amount = await loadWallet();
+    if (amount != null) showToast('Balance updated', 'info');
     else showToast('Could not refresh balance. Check your connection.', 'err');
   }, [loadWallet]);
 
@@ -367,7 +393,7 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({ children }) 
 
 
 
-  const covers = useCallback((amount: number) => balance >= amount, [balance]);
+  const covers = useCallback((amount: number) => ready && balance + 0.009 >= amount, [balance, ready]);
 
 
 
@@ -382,6 +408,7 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       wallet,
 
       loading,
+      ready,
       hasMore: pager.hasMore,
       loadingMore: pager.loadingMore,
       loadMore: pager.loadMore,
@@ -408,6 +435,7 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       wallet,
 
       loading,
+      ready,
       pager.hasMore,
       pager.loadingMore,
       pager.loadMore,

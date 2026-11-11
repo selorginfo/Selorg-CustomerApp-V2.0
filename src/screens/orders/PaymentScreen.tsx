@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
+import { useFocusEffect, useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import BillSummaryCard from '../../components/BillSummaryCard';
 import WorldlineCheckoutWebView from '../../components/WorldlineCheckoutWebView';
@@ -10,6 +10,7 @@ import { colors, fontFamily, radii } from '../../theme';
 import { formatCurrency } from '../../utils/format';
 import { showToast } from '../../utils/toast';
 import { parseReturnUrl } from '../../utils/worldline';
+import { onlineFailureBlocksMethod, resolvePayMethod } from '../../utils/paymentAttempt';
 import { useCart } from '../../context/CartContext';
 import { useOrders } from '../../context/OrdersContext';
 import type { PayMethod } from '../../context/OrdersContext';
@@ -19,7 +20,7 @@ import type { RootStackParamList } from '../../navigation/types';
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
 const METHODS: { id: PayMethod; icon: IconName; title: string }[] = [
-  { id: 'online', icon: 'bank', title: 'UPI / Cards' },
+  { id: 'online', icon: 'bank', title: 'Pay online' },
   { id: 'wallet', icon: 'wallet', title: 'Selorg Wallet' },
   { id: 'cod', icon: 'cash', title: 'Cash on delivery' },
 ];
@@ -30,7 +31,9 @@ export default function PaymentScreen() {
   const {
     payState,
     payError,
+    failedMethod,
     placeOrder,
+    payExistingOrder,
     retryPayment,
     gatewaySessionPayload,
     pendingGatewayOrderId,
@@ -43,14 +46,47 @@ export default function PaymentScreen() {
   // Honour the method picked on Checkout, defaulting to online.
   const [method, setMethod] = useState<PayMethod>(route.params?.method ?? 'online');
 
+  // Checkout can change the method and navigate back onto this screen.
+  useEffect(() => {
+    if (route.params?.method) setMethod(route.params.method);
+  }, [route.params?.method]);
+
+  useFocusEffect(
+    React.useCallback(() => {
+      void wallet.reloadWallet();
+    }, [wallet.reloadWallet]),
+  );
+
+  // A failed UPI attempt must not stay on screen after the shopper picks COD or wallet.
+  useEffect(() => {
+    if (method === 'online') return;
+    if (failedMethod === 'online' && (payState === 'failed' || payState === 'error')) {
+      retryPayment();
+    }
+  }, [method, failedMethod, payState, retryPayment]);
+
   const walletCovers = wallet.covers(grandTotal);
 
-  const handlePay = async () => {
+  const handlePay = async (nextMethod?: PayMethod) => {
+    // A press event must not become the method. Only online | cod | wallet count.
+    const paying = resolvePayMethod(nextMethod, method);
+    if (paying !== method) setMethod(paying);
     if (payState === 'processing' || payState === 'awaiting_gateway') return;
-    if (method === 'wallet' && !walletCovers) {
-      return;
+    if (paying === 'wallet') {
+      const balance = await wallet.reloadWallet();
+      if (balance == null) {
+        showToast('Could not load your wallet balance. Please try again.', 'err');
+        return;
+      }
+      if (balance + 0.009 < grandTotal) {
+        showToast('Insufficient wallet balance. Add money or choose another method.', 'err');
+        return;
+      }
     }
-    const result = await placeOrder(method, route.params?.receiver);
+    const resumeOrderId = paying === 'online' ? route.params?.orderId : undefined;
+    const result = resumeOrderId
+      ? await payExistingOrder(resumeOrderId)
+      : await placeOrder(paying, route.params?.receiver);
     if (result.success && result.order && !result.needsGateway) {
       await wallet.reloadWallet();
       goToOrderPlaced(result.order.id);
@@ -117,7 +153,7 @@ export default function PaymentScreen() {
     );
   }
 
-  if (payState === 'failed' || payState === 'error') {
+  if (onlineFailureBlocksMethod(payState, failedMethod, method)) {
     return (
       <ScreenContainer background={colors.white}>
         <Header title="Payment" onBack={() => navigation.goBack()} />
@@ -131,6 +167,13 @@ export default function PaymentScreen() {
         </View>
         <View style={styles.retryWrap}>
           <PrimaryButton label="Retry payment" onPress={retryPayment} />
+          <PrimaryButton
+            label="Pay cash on delivery"
+            kind="ghost"
+            onPress={() => {
+              void handlePay('cod');
+            }}
+          />
           <PrimaryButton label="Choose another method" kind="ghost" onPress={resetToMethodPicker} />
           <Text style={styles.retryNote}>You stay logged in — your cart and order draft are safe.</Text>
         </View>
@@ -145,12 +188,14 @@ export default function PaymentScreen() {
         <Text style={styles.sectionLabel}>CHOOSE PAYMENT METHOD</Text>
         {METHODS.map(m => {
           const active = method === m.id;
-          const low = m.id === 'wallet' && !walletCovers;
+          const low = m.id === 'wallet' && wallet.ready && !walletCovers;
           const sub =
             m.id === 'online'
-              ? 'Secured by Worldline'
+              ? 'UPI, cards & net banking'
               : m.id === 'wallet'
-                ? `Balance ${formatCurrency(wallet.wallet.balance)}`
+                ? !wallet.ready
+                  ? 'Checking balance…'
+                  : `Balance ${formatCurrency(wallet.wallet.balance)}`
                 : 'Pay when it arrives';
           return (
             <Pressable
@@ -180,7 +225,7 @@ export default function PaymentScreen() {
           );
         })}
 
-        {method === 'wallet' && !walletCovers ? (
+        {method === 'wallet' && wallet.ready && !walletCovers ? (
           <View style={styles.insufficientBanner}>
             <Text style={styles.insufficientText}>Insufficient balance for full payment</Text>
             <Pressable onPress={() => navigation.navigate('Wallet')} hitSlop={6}>
@@ -195,16 +240,25 @@ export default function PaymentScreen() {
       <View style={styles.bottomBar}>
         <PrimaryButton
           testID="payment-submit"
-          label={method === 'cod' ? `Place order · ${formatCurrency(grandTotal)}` : `Pay ${formatCurrency(grandTotal)}`}
+          label={
+            method === 'wallet' && !wallet.ready
+              ? 'Checking wallet…'
+              : method === 'cod'
+                ? `Place order · ${formatCurrency(grandTotal)}`
+                : `Pay ${formatCurrency(grandTotal)}`
+          }
           icon={method === 'cod' ? 'box' : 'lock'}
-          disabled={(method === 'wallet' && !walletCovers) || payState === 'awaiting_gateway'}
-          onPress={handlePay}
+          disabled={(method === 'wallet' && (!wallet.ready || !walletCovers)) || payState === 'awaiting_gateway'}
+          onPress={() => {
+            void handlePay();
+          }}
         />
       </View>
 
       {gatewaySessionPayload && payState === 'awaiting_gateway' ? (
         <WorldlineCheckoutWebView
           visible
+          openAllPaymentModes
           sessionPayload={gatewaySessionPayload}
           onComplete={handleGatewayComplete}
           onCancel={leaveCancelledPayment}

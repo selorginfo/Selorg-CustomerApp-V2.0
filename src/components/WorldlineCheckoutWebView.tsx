@@ -13,6 +13,27 @@ import { colors, fontFamily } from '../theme';
 import { buildPaynimoCheckoutHtml } from '../utils/paynimoCheckout';
 import { hasWorldlineGatewayPayload, isWorldlineReturnUrl, parseReturnUrl } from '../utils/worldline';
 
+const UPI_SCHEMES = ['upi:', 'phonepe:', 'paytmmp:', 'tez:', 'gpay:'];
+const UPI_INTENT_PACKAGES = [
+  'com.google.android.apps.nbu.paisa.user',
+  'com.phonepe.app',
+  'net.one97.paytm',
+  'in.org.npci.upiapp',
+];
+
+/** HTTPS, plus the inline pages the Paynimo SDK uses. HTTP stays blocked. */
+function isSecureCheckoutUrl(url: string): boolean {
+  return /^(https:|about:|data:|blob:|javascript:)/i.test(url);
+}
+
+function allowedUpiUrl(url: string): boolean {
+  const lower = url.trim().toLowerCase();
+  if (UPI_SCHEMES.some(scheme => lower.startsWith(scheme))) return true;
+  if (!lower.startsWith('intent:')) return false;
+  const packageName = lower.match(/;package=([^;]+)/)?.[1] || '';
+  return UPI_INTENT_PACKAGES.includes(packageName);
+}
+
 export interface WorldlineCheckoutProps {
   visible: boolean;
   /** Paynimo session payload from selorg-service (preferred). */
@@ -21,6 +42,11 @@ export interface WorldlineCheckoutProps {
   redirectUrl?: string | null;
   onComplete: (payload: { url: string; response?: Record<string, unknown> }) => void;
   onCancel: () => void;
+  /**
+   * Order checkout shows UPI, cards, and net banking together.
+   * Wallet top-up leaves this off so the picked method stays scoped.
+   */
+  openAllPaymentModes?: boolean;
   /** Optional testID for the Close / cancel control. */
   cancelTestID?: string;
 }
@@ -35,21 +61,26 @@ export default function WorldlineCheckoutWebView({
   redirectUrl,
   onComplete,
   onCancel,
+  openAllPaymentModes,
   cancelTestID,
 }: WorldlineCheckoutProps) {
   const [loading, setLoading] = useState(true);
   const completed = useRef(false);
+  const painted = useRef(false);
 
   React.useEffect(() => {
     if (visible) {
       completed.current = false;
+      painted.current = false;
       setLoading(true);
     }
   }, [visible, sessionPayload, redirectUrl]);
 
-  const checkoutHtml = sessionPayload ? buildPaynimoCheckoutHtml(sessionPayload) : null;
+  const checkoutHtml = sessionPayload
+    ? buildPaynimoCheckoutHtml(sessionPayload, openAllPaymentModes ? { paymentMode: 'all' } : undefined)
+    : null;
   const source = checkoutHtml
-    ? { html: checkoutHtml }
+    ? { html: checkoutHtml, baseUrl: 'https://www.paynimo.com/' }
     : redirectUrl
       ? { uri: redirectUrl }
       : null;
@@ -107,17 +138,25 @@ export default function WorldlineCheckoutWebView({
       ) : null}
       <WebView
         source={source}
-        onLoadStart={() => setLoading(true)}
-        onLoadEnd={() => setLoading(false)}
+        onLoadStart={() => {
+          if (!painted.current) setLoading(true);
+        }}
+        onLoadEnd={() => {
+          painted.current = true;
+          setLoading(false);
+        }}
         onError={() => setLoading(false)}
         onHttpError={() => setLoading(false)}
         onNavigationStateChange={onNavigationStateChange}
         onShouldStartLoadWithRequest={req => {
-          // UPI intents (upi://, phonepe://, tez://, intent://…) must open the payment app, not load in the WebView.
           if (!/^(https?|about|data|blob|javascript):/i.test(req.url)) {
-            Linking.openURL(req.url).catch(() => setLoading(false));
+            if (allowedUpiUrl(req.url)) {
+              Linking.openURL(req.url).catch(() => setLoading(false));
+            }
             return false;
           }
+          // Checkout is already open. Card OTP and net banking live on the bank's own site.
+          if (!isSecureCheckoutUrl(req.url)) return false;
           if (isWorldlineReturnUrl(req.url)) {
             const parsed = parseReturnUrl(req.url);
             const hasResult =
@@ -132,6 +171,10 @@ export default function WorldlineCheckoutWebView({
         onMessage={event => {
           try {
             const msg = JSON.parse(event.nativeEvent.data);
+            if (msg?.type === 'opened' || msg?.type === 'error') {
+              painted.current = true;
+              setLoading(false);
+            }
             if (msg?.type === 'gateway' && msg.detail && !completed.current) {
               completed.current = true;
               onComplete({ url: '', response: msg.detail as Record<string, unknown> });
@@ -140,11 +183,11 @@ export default function WorldlineCheckoutWebView({
             // ignore
           }
         }}
-        startInLoadingState
         javaScriptEnabled
         domStorageEnabled
-        originWhitelist={['*']}
-        mixedContentMode="always"
+        cacheEnabled
+        originWhitelist={['https://*', 'about:blank']}
+        mixedContentMode="never"
       />
     </Modal>
   );

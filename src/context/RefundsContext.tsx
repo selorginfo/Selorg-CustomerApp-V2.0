@@ -1,6 +1,6 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState, ReactNode } from 'react';
 import { refundsApi, mapRefundReasonCode } from '../services/refunds.service';
-import type { ApiRefund } from '../services/refunds.service';
+import { toRefund } from '../services/refunds.contract';
 import { Storage } from '../api/storage';
 import { showToast } from '../utils/toast';
 import type { Order } from './OrdersContext';
@@ -32,24 +32,6 @@ interface RefundsContextType {
 }
 
 const RefundsContext = createContext<RefundsContextType | undefined>(undefined);
-
-function toRefund(raw: ApiRefund): Refund {
-  const statusMap: Record<string, Refund['status']> = {
-    pending: 'pending',
-    approved: 'pending',
-    processed: 'processed',
-    rejected: 'rejected',
-  };
-  return {
-    id: raw._id,
-    orderNumber: raw.orderNumber || raw.orderId || raw._id,
-    amount: raw.amount,
-    status: statusMap[raw.status] || 'pending',
-    method: raw.method || 'original_payment',
-    reasonText: raw.reasonText || raw.reason || '',
-    ts: raw.createdAt,
-  };
-}
 
 export const RefundsProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const { user } = useAuth();

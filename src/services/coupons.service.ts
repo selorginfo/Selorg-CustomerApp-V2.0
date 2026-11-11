@@ -1,16 +1,7 @@
 import SelorgApi from '../api';
+import { couponsFromResponse, type ApiCoupon } from './coupons.contract';
 
-export interface ApiCoupon {
-  _id: string;
-  code: string;
-  name?: string;
-  description?: string;
-  discountType?: string;
-  discountValue?: number;
-  minOrderAmount?: number;
-  maxDiscountAmount?: number | null;
-  isActive?: boolean;
-}
+export type { ApiCoupon } from './coupons.contract';
 
 export interface CouponValidationResult {
   valid: boolean;
@@ -36,12 +27,11 @@ const unwrap = <T,>(res: unknown): T =>
   (res && typeof res === 'object' && 'data' in res ? (res as { data: T }).data : res) as T;
 
 export const couponsApi = {
-  list: (): Promise<ApiCoupon[]> =>
-    SelorgApi.get('/coupons').then(unwrap<ApiCoupon[]>),
+  list: (cartValue?: number): Promise<ApiCoupon[]> =>
+    SelorgApi.get('/coupons', {
+      query: cartValue != null ? { cart_value: cartValue } : undefined,
+    }).then(couponsFromResponse),
 
   validate: (input: ValidateCouponInput): Promise<CouponValidationResult> =>
     SelorgApi.post('/coupons/validate', { data: input }).then(unwrap<CouponValidationResult>),
-
-  redeem: (input: ValidateCouponInput & { order_id: string }): Promise<CouponValidationResult> =>
-    SelorgApi.post('/coupons/redeem', { data: input }).then(unwrap<CouponValidationResult>),
 };

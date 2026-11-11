@@ -9,6 +9,8 @@
 import { catalogApi } from '../services/catalog.service';
 import type { ApiCategory, ApiProduct, HomePayload } from '../services/catalog.service';
 import { sectionKeyToCollectionSlug } from './catalogMappers';
+import { mergePromoBanners } from './homeLayout';
+import { isDirectVideoUrl, normalizeVideoPlayback, type VideoPlayback } from './videoUrl';
 
 export type HomeBanner = {
   _id?: string;
@@ -20,6 +22,9 @@ export type HomeBanner = {
   subtitle?: string;
   imageUrl?: string;
   bannerImageUrl?: string;
+  thumbnailUrl?: string;
+  videoUrl?: string;
+  videoPlayback?: VideoPlayback;
   link?: string;
   redirectType?: string;
   redirectValue?: string;
@@ -37,8 +42,9 @@ export type HomeLifestyleItem = {
 };
 
 export type ResolvedHomeSection =
-  | { key: string; label: string; kind: 'banners'; items: HomeBanner[] }
+  | { key: string; label: string; kind: 'banners'; items: HomeBanner[]; layout?: string }
   | { key: string; label: string; kind: 'lifestyle'; items: HomeLifestyleItem[] }
+  | { key: string; label: string; kind: 'announcement'; text: string; link?: string }
   | {
       key: string;
       label: string;
@@ -49,7 +55,7 @@ export type ResolvedHomeSection =
     };
 
 function isUsableBannerImage(b: HomeBanner): boolean {
-  const src = String(b.imageUrl || b.bannerImageUrl || '').trim();
+  const src = String(b.imageUrl || b.bannerImageUrl || b.videoUrl || '').trim();
   if (!src) return false;
   const url = src.toLowerCase();
   return !url.includes('/sample%20banner/') && !url.includes('/sample banner/');
@@ -66,6 +72,9 @@ function normalizeBanner(raw: Record<string, unknown>): HomeBanner {
     subtitle: raw.subtitle ? String(raw.subtitle) : undefined,
     imageUrl: (raw.imageUrl || raw.bannerImageUrl || raw.image) as string | undefined,
     bannerImageUrl: raw.bannerImageUrl as string | undefined,
+    thumbnailUrl: raw.thumbnailUrl ? String(raw.thumbnailUrl) : undefined,
+    videoUrl: raw.videoUrl ? String(raw.videoUrl) : undefined,
+    videoPlayback: normalizeVideoPlayback(raw.videoPlayback),
     link: raw.link ? String(raw.link) : undefined,
     redirectType: raw.redirectType ? String(raw.redirectType) : undefined,
     redirectValue: raw.redirectValue ? String(raw.redirectValue) : undefined,
@@ -86,17 +95,20 @@ function normalizeLifestyle(raw: Record<string, unknown>): HomeLifestyleItem {
 }
 
 export function isHeroBannerSection(section: ResolvedHomeSection): boolean {
-  return (
-    section.kind === 'banners' &&
-    section.items.some(b => b.slot === 'hero' || b.presentationMode === 'carousel')
-  );
+  if (section.kind !== 'banners') return false;
+  if (section.layout === 'hero') return true;
+  if (section.layout) return false;
+  return section.items.some(b => b.slot === 'hero' || b.presentationMode === 'carousel');
 }
 
 export function bannerImageUri(b: HomeBanner): string | undefined {
   const primary = typeof b.imageUrl === 'string' ? b.imageUrl.trim() : '';
-  if (primary) return primary;
+  if (primary && !isDirectVideoUrl(primary)) return primary;
   const fallback = typeof b.bannerImageUrl === 'string' ? b.bannerImageUrl.trim() : '';
-  return fallback || undefined;
+  if (fallback && !isDirectVideoUrl(fallback)) return fallback;
+  const thumb = typeof b.thumbnailUrl === 'string' ? b.thumbnailUrl.trim() : '';
+  if (thumb && !isDirectVideoUrl(thumb)) return thumb;
+  return undefined;
 }
 
 /**
@@ -112,16 +124,21 @@ export async function resolveHomeSections(home: HomePayload): Promise<ResolvedHo
       const key = def.key || '';
       const label = def.label || key;
 
-      // Categories rail is rendered separately on mobile; skip Moringa promo like web.
+      // The mobile home already has its own Shop by category rail.
+      // Moringa and other CMS banners stay — the web home shows them.
       if (
+        def.type === 'super_category' ||
         key === 'categories' ||
         key === 'section_categories' ||
-        /shop\s*by\s*categor/i.test(label) ||
-        /^categor/i.test(key) ||
-        /moringa/i.test(key) ||
-        /moringa/i.test(label)
+        /shop\s*by\s*categor/i.test(label)
       ) {
         return null;
+      }
+
+      if (def.type === 'tagline') {
+        const text = (def.taglineText || '').trim();
+        if (!text) return null;
+        return { key, label, kind: 'announcement', text, link: def.link || undefined };
       }
 
       const inline = sectionsMap[key];
@@ -130,9 +147,10 @@ export async function resolveHomeSections(home: HomePayload): Promise<ResolvedHo
         if (first && typeof first === 'object' && 'slot' in first) {
           const items = (inline as Record<string, unknown>[])
             .map(normalizeBanner)
+            .filter(b => b.bannerId !== 'Ban-048')
             .filter(isUsableBannerImage);
           if (!items.length) return null;
-          return { key, label, kind: 'banners', items };
+          return { key, label, kind: 'banners', items, layout: def.layout || undefined };
         }
         // Category-shaped payloads (have slug) — never render as lifestyle (web parity)
         if (first && typeof first === 'object' && 'slug' in first) {
@@ -168,7 +186,8 @@ export async function resolveHomeSections(home: HomePayload): Promise<ResolvedHo
     }),
   );
 
-  return resolved.filter((s): s is ResolvedHomeSection => s !== null);
+  const sections = resolved.filter((s): s is ResolvedHomeSection => s !== null);
+  return mergePromoBanners(sections, isHeroBannerSection);
 }
 
 export async function loadHomeCategories(home: HomePayload): Promise<ApiCategory[]> {

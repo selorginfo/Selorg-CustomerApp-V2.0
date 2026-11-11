@@ -155,7 +155,18 @@ try {
 }
 
 import { AppRegistry } from 'react-native';
+import React, { useEffect, useState } from 'react';
 import App from './App';
 import { name as appName } from './app.json';
+import { Storage } from './src/api/storage';
 
-AppRegistry.registerComponent(appName, () => App);
+function BootstrappedApp() {
+  const [ready, setReady] = useState(false);
+  useEffect(() => {
+    Storage.hydrate().finally(() => setReady(true));
+  }, []);
+  if (!ready) return null;
+  return <App />;
+}
+
+AppRegistry.registerComponent(appName, () => BootstrappedApp);

@@ -1,4 +1,5 @@
 import configs from '../api/configs';
+import { healthProbeUrl } from './healthProbe';
 
 /**
  * Lightweight online/offline tracking without a native NetInfo module.
@@ -46,7 +47,7 @@ export function probeConnectivity(): Promise<boolean> {
   if (probing) return probing;
   const controller = new AbortController();
   const t = setTimeout(() => controller.abort(), PROBE_TIMEOUT_MS);
-  probing = fetch(configs.API_HOST, { method: 'GET', signal: controller.signal, headers: { 'Cache-Control': 'no-cache' } })
+  probing = fetch(healthProbeUrl(configs.API_HOST), { method: 'GET', signal: controller.signal, headers: { 'Cache-Control': 'no-cache' } })
     .then(() => true)
     .catch(() => false)
     .then(ok => {

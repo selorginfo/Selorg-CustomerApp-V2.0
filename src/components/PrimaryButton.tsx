@@ -42,7 +42,7 @@ export default function PrimaryButton({
   return (
     <Pressable
       testID={testID}
-      onPress={isDisabled ? undefined : onPress}
+      onPress={isDisabled || !onPress ? undefined : () => onPress()}
       disabled={isDisabled}
       style={({ pressed }) => [
         styles.base,

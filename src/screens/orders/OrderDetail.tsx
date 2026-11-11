@@ -191,6 +191,15 @@ export default function OrderDetail() {
             <Text style={styles.totalValue}>{formatCurrency(order.totalBill)}</Text>
           </View>
           <Text style={styles.payLabel}>Payment: {PAY_LABEL[order.paymentStatus] || order.paymentStatus}</Text>
+          {order.paymentStatus === 'pending' && order.method === 'online' && order.status !== 'cancelled' ? (
+            <View style={styles.payNow}>
+              <PrimaryButton
+                label="Pay now"
+                icon="lock"
+                onPress={() => navigation.navigate('Payment', { method: 'online', orderId: order.id })}
+              />
+            </View>
+          ) : null}
         </View>
 
         {/* Delivery address */}
@@ -276,6 +285,7 @@ const styles = StyleSheet.create({
   totalLabel: { fontFamily: fontFamily.bold, fontSize: 14.5, color: colors.text },
   totalValue: { fontFamily: fontFamily.bold, fontSize: 14.5, color: colors.text },
   payLabel: { fontFamily: fontFamily.semibold, fontSize: 11.5, color: colors.textMuted, marginTop: 8 },
+  payNow: { marginTop: 14 },
   addrLabel: { fontFamily: fontFamily.semibold, fontSize: 13, color: colors.text },
   addrText: { fontFamily: fontFamily.medium, fontSize: 12, color: colors.textMuted, marginTop: 3, lineHeight: 17 },
   actions: { gap: 10 },

@@ -31,18 +31,21 @@ export default function OrderPlacedScreen() {
 
   const unpaid = order.paymentStatus === 'pending' || order.paymentStatus === 'failed';
   if (unpaid) {
+    const failed = order.paymentStatus === 'failed';
     return (
       <ScreenContainer background={colors.white} edges={['top', 'bottom']}>
         <View style={styles.content}>
-          <Text style={styles.title}>Payment failed</Text>
+          <Text style={styles.title}>{failed ? 'Payment failed' : 'Payment not completed'}</Text>
           <Text style={styles.subtitle}>
-            This order was not confirmed. No successful payment was recorded. You can retry payment.
+            {failed
+              ? 'This order was not confirmed. No successful payment was recorded. You can retry payment.'
+              : 'No payment was taken for this order. You can pay now without placing it again.'}
           </Text>
         </View>
         <View style={styles.footer}>
           <PrimaryButton
-            label="Retry payment"
-            onPress={() => navigation.replace('Payment', { method: 'online' })}
+            label={failed ? 'Retry payment' : 'Pay now'}
+            onPress={() => navigation.replace('Payment', { method: 'online', orderId: order.id })}
           />
           <PrimaryButton
             label="Back to home"

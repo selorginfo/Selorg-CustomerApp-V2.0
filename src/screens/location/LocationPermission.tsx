@@ -131,6 +131,7 @@ export default function LocationPermissionScreen() {
       // or let the user into the app as if it were set.
       const assignment = await storeApi.assign(place.latitude, place.longitude);
       if (assignment.serviceable === false) {
+        mmkvStorage.removeItem('assignedStoreId');
         setNotServiceable(
           assignment.message || "We don't deliver to your current location yet.",
         );

@@ -12,13 +12,8 @@ export type RootStackParamList = {
   Onboarding: undefined;
 
   EnterMobile: { mode: 'login' | 'signup' } | undefined;
-  LoginPassword: { method: 'email' | 'mobile' } | undefined;
-  CreatePassword: undefined;
-  Forgot: undefined;
-  ResetPassword: undefined;
   Otp: undefined;
   ProfileSetup: undefined;
-  AuthSuccess: { mode: 'login' | 'signup' };
   LocationPermission: undefined;
 
   Main: NavigatorScreenParams<MainTabParamList> | undefined;
@@ -37,7 +32,12 @@ export type RootStackParamList = {
   Addresses: { fromCheckout?: boolean } | undefined;
   AddAddress: { addressId?: string } | undefined;
   Payment:
-    | { method?: 'online' | 'cod' | 'wallet'; receiver?: { name?: string; phone?: string } }
+    | {
+        method?: 'online' | 'cod' | 'wallet';
+        receiver?: { name?: string; phone?: string };
+        /** Pay this unpaid online order instead of creating another one. */
+        orderId?: string;
+      }
     | undefined;
   OrderPlaced: { orderId: string };
 
