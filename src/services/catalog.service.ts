@@ -2,6 +2,7 @@ import SelorgApi from '../api';
 import { mmkvStorage } from '../lib/storage';
 import { unwrapApiData, unwrapApiList } from '../utils/apiResponse';
 import { mapCategoryBrowse, normalizeCategory, normalizeProduct } from '../utils/catalogMappers';
+import { dedupeSizeOptions } from '../utils/variantSizes';
 
 /** Dark store chosen by `/store/assign`. Catalog stock is scoped to this store. */
 function servingStoreId(explicit?: string): string | undefined {
@@ -154,7 +155,8 @@ export const catalogApi = {
     const res = await SelorgApi.get(`/products/${id}`, { query: withStore(undefined, storeId) });
     const data = unwrapApiData<Record<string, unknown>>(res);
     const product = data?.product ? normalizeProduct(data.product as Record<string, unknown>) : undefined;
-    const variants = Array.isArray(data?.variants) ? data.variants : [];
+    const rawVariants = Array.isArray(data?.variants) ? (data.variants as NonNullable<ApiProductDetail['variants']>) : [];
+    const variants = dedupeSizeOptions(rawVariants, product?._id);
     const relatedProducts = mapProducts(data?.relatedProducts);
     return { product, variants, relatedProducts };
   },
