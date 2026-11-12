@@ -42,7 +42,9 @@ export function buildPaynimoCheckoutHtml(
     ...(payload.features || {}),
     enableAbortResponse: true,
     enableExpressPay: false,
-    enableNewWindowFlow: false,
+    // Card "Next" replaces this page with returnUrl before the card form when this is false.
+    // Web checkout and the rider app both leave the card form in a same-view window.
+    enableNewWindowFlow: true,
     enableTopWindowRedirection: false,
     singleBankForceRedirect: false,
   };
@@ -127,7 +129,7 @@ export function buildPaynimoCheckoutHtml(
       }
       payload.consumerData = payload.consumerData || {};
       payload.features = payload.features || {};
-      payload.features.enableNewWindowFlow = false;
+      payload.features.enableNewWindowFlow = true;
       payload.features.enableTopWindowRedirection = false;
       payload.features.singleBankForceRedirect = false;
       payload.consumerData.responseHandler = function (res) {

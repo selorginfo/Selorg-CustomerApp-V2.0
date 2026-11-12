@@ -38,7 +38,15 @@ import { Storage } from '../api/storage';
 import { showToast } from '../utils/toast';
 import { useAuth } from './AuthContext';
 
-import { parseReturnUrl, hasWorldlineGatewayPayload, isWorldlinePaidStatus, isWorldlinePendingStatus, isWorldlineFailedStatus } from '../utils/worldline';
+import {
+  parseReturnUrl,
+  isWorldlinePaidStatus,
+  isWorldlinePendingStatus,
+  isWorldlineFailedStatus,
+  shouldSubmitGatewayResponse,
+  gatewayDismissAction,
+  type GatewayDismissAction,
+} from '../utils/worldline';
 
 
 
@@ -90,7 +98,7 @@ interface WalletContextType {
 
   completeTopUp: (returnUrlOrResponse: string | Record<string, unknown>) => Promise<boolean>;
 
-  cancelTopUp: () => void;
+  cancelTopUp: (info?: { bankAuthenticationStarted?: boolean }) => Promise<GatewayDismissAction>;
 
   topUpSessionPayload: Record<string, unknown> | null;
 
@@ -279,7 +287,7 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         const response =
           typeof returnUrlOrResponse === 'string' ? parseReturnUrl(returnUrlOrResponse) : returnUrlOrResponse;
 
-        if (hasWorldlineGatewayPayload(response) || response.msg || response.paymentMethod) {
+        if (shouldSubmitGatewayResponse(response)) {
 
           await paymentsApi.completeWorldlinePayment({
 
@@ -301,6 +309,8 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({ children }) 
 
         let paid = false;
 
+        let failed = false;
+
         for (let i = 0; i < 10; i += 1) {
 
           const status = await paymentsApi.getWorldlineStatus(orderId);
@@ -313,7 +323,13 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({ children }) 
 
           }
 
-          if (isWorldlineFailedStatus(status)) break;
+          if (isWorldlineFailedStatus(status)) {
+
+            failed = true;
+
+            break;
+
+          }
 
           if (!isWorldlinePendingStatus(status)) break;
 
@@ -326,6 +342,14 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         clearTopUpSession();
 
 
+
+        if (!paid && !failed) {
+
+          showToast('Payment is still being verified. Your balance updates only after it is confirmed.', 'info');
+
+          return false;
+
+        }
 
         if (!paid) {
 
@@ -365,31 +389,91 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({ children }) 
 
 
 
-  const cancelTopUp = useCallback(() => {
+  const cancelTopUp = useCallback(
 
-    if (pendingTopUpOrderId && pendingTopUpTxnId) {
+    async (info?: { bankAuthenticationStarted?: boolean }): Promise<GatewayDismissAction> => {
 
-      paymentsApi
+      const orderId = pendingTopUpOrderId;
 
-        .abortWorldlinePayment({
+      const txnId = pendingTopUpTxnId;
 
-          orderId: pendingTopUpOrderId,
+      let action: GatewayDismissAction = orderId ? 'hold' : 'abort';
 
-          txnId: pendingTopUpTxnId,
+      if (orderId) {
 
-          reason: 'user_cancelled',
+        try {
 
-        })
+          const status = await paymentsApi.getWorldlineStatus(orderId);
 
-        .catch(() => {});
+          action = gatewayDismissAction(status, {
 
-    }
+            statusKnown: true,
 
-    clearTopUpSession();
+            bankAuthenticationStarted: !!info?.bankAuthenticationStarted,
 
-    showToast('Top-up cancelled', 'info');
+          });
 
-  }, [pendingTopUpOrderId, pendingTopUpTxnId, clearTopUpSession]);
+        } catch {
+
+          action = 'hold';
+
+        }
+
+      }
+
+      if (action === 'finish_paid') {
+
+        await completeTopUp('');
+
+        return 'finish_paid';
+
+      }
+
+      if (action === 'abort' && orderId && txnId) {
+
+        try {
+
+          await paymentsApi.abortWorldlinePayment({
+
+            orderId,
+
+            txnId,
+
+            reason: 'user_cancelled',
+
+          });
+
+        } catch {
+
+          action = 'hold';
+
+        }
+
+      }
+
+      clearTopUpSession();
+
+      if (action === 'hold') {
+
+        showToast('Payment is still being verified. Your balance updates only after it is confirmed.', 'info');
+
+      } else if (action === 'close_failed') {
+
+        showToast('Payment was not confirmed. No money was added.', 'err');
+
+      } else {
+
+        showToast('Top-up cancelled. No money was added.', 'info');
+
+      }
+
+      return action;
+
+    },
+
+    [pendingTopUpOrderId, pendingTopUpTxnId, clearTopUpSession, completeTopUp],
+
+  );
 
 
 

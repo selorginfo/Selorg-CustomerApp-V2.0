@@ -3,7 +3,7 @@ import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from
 import { useFocusEffect, useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import BillSummaryCard from '../../components/BillSummaryCard';
-import WorldlineCheckoutWebView from '../../components/WorldlineCheckoutWebView';
+import WorldlineCheckoutWebView, { type GatewayCloseInfo } from '../../components/WorldlineCheckoutWebView';
 import { Header, Icon, PrimaryButton, ScreenContainer, StateView } from '../../components';
 import type { IconName } from '../../components';
 import { colors, fontFamily, radii } from '../../theme';
@@ -103,13 +103,42 @@ export default function PaymentScreen() {
     });
   };
 
-  // Back to the method picker without losing the session or the order draft.
-  const resetToMethodPicker = () => cancelGatewayPayment();
-
-  const leaveCancelledPayment = () => {
-    cancelGatewayPayment();
+  const applyDismiss = async (info: GatewayCloseInfo | undefined, leave: boolean) => {
+    const orderId = pendingGatewayOrderId || activeOrder?.id;
+    const action = await cancelGatewayPayment({
+      bankAuthenticationStarted: !!info?.bankAuthenticationStarted,
+    });
+    if (action === 'finish_paid' && orderId) {
+      const result = await completeGatewayPayment(orderId, '');
+      if (result.success && result.order) {
+        await wallet.reloadWallet();
+        goToOrderPlaced(result.order.id);
+        return;
+      }
+    }
+    if (action === 'hold' || action === 'finish_paid') {
+      showToast('Payment is still being verified. Check Orders before paying again.', 'info');
+      if (leave) navigation.navigate('Checkout');
+      return;
+    }
+    if (action === 'close_failed') {
+      if (leave) {
+        showToast('Payment was not completed. You can retry from checkout.', 'err');
+        navigation.navigate('Checkout');
+      }
+      return;
+    }
     showToast('Payment cancelled. No amount has been charged.', 'info');
-    navigation.navigate('Checkout');
+    if (leave) navigation.navigate('Checkout');
+  };
+
+  // Back to the method picker. Status is checked before any abort.
+  const resetToMethodPicker = () => {
+    applyDismiss({ bankAuthenticationStarted: false }, false).catch(() => {});
+  };
+
+  const leaveCancelledPayment = (info: GatewayCloseInfo) => {
+    applyDismiss(info, true).catch(() => {});
   };
 
   const handleGatewayComplete = async ({
@@ -121,7 +150,6 @@ export default function PaymentScreen() {
   }) => {
     const orderId = pendingGatewayOrderId || activeOrder?.id;
     if (!orderId) {
-      cancelGatewayPayment();
       showToast('We could not confirm this payment. Check Orders before paying again.', 'err');
       navigation.navigate('Checkout');
       return;
@@ -130,6 +158,11 @@ export default function PaymentScreen() {
     if (result.success && result.order) {
       await wallet.reloadWallet();
       goToOrderPlaced(result.order.id);
+      return;
+    }
+    if (result.pendingVerification) {
+      showToast(result.message || 'Payment is still being verified. Check Orders before paying again.', 'info');
+      navigation.navigate('Checkout');
       return;
     }
     const status = String(

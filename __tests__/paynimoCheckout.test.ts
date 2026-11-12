@@ -33,7 +33,17 @@ describe('Paynimo checkout instruments', () => {
     const payload = payloadOf(html);
     expect(payload.paymentMode).toBe('all');
     expect(payload.features?.enableExpressPay).toBe(false);
-    expect(payload.features?.enableNewWindowFlow).toBe(false);
+    expect(payload.features?.enableNewWindowFlow).toBe(true);
+    expect(payload.features?.enableTopWindowRedirection).toBe(false);
+    expect(payload.features?.singleBankForceRedirect).toBe(false);
+  });
+
+  it('does not force the card window closed after the payload is built', () => {
+    const html = buildPaynimoCheckoutHtml(session, { paymentMode: 'all' });
+    expect(html).toContain('enableNewWindowFlow = true');
+    expect(html).not.toContain('enableNewWindowFlow = false');
+    expect(html).toContain('enableTopWindowRedirection = false');
+    expect(html).toContain('singleBankForceRedirect = false');
   });
 
   it('keeps a wallet top-up on the method the shopper picked', () => {

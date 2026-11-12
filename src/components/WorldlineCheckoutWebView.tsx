@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Linking,
   Modal,
+  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -11,27 +12,11 @@ import {
 import { WebView, type WebViewNavigation } from 'react-native-webview';
 import { colors, fontFamily } from '../theme';
 import { buildPaynimoCheckoutHtml } from '../utils/paynimoCheckout';
-import { hasWorldlineGatewayPayload, isWorldlineReturnUrl, parseReturnUrl } from '../utils/worldline';
+import { classifyCheckoutNavigation, isBankAuthenticationUrl } from '../utils/checkoutNavigation';
+import { isWorldlineReturnUrl } from '../utils/worldline';
 
-const UPI_SCHEMES = ['upi:', 'phonepe:', 'paytmmp:', 'tez:', 'gpay:'];
-const UPI_INTENT_PACKAGES = [
-  'com.google.android.apps.nbu.paisa.user',
-  'com.phonepe.app',
-  'net.one97.paytm',
-  'in.org.npci.upiapp',
-];
-
-/** HTTPS, plus the inline pages the Paynimo SDK uses. HTTP stays blocked. */
-function isSecureCheckoutUrl(url: string): boolean {
-  return /^(https:|about:|data:|blob:|javascript:)/i.test(url);
-}
-
-function allowedUpiUrl(url: string): boolean {
-  const lower = url.trim().toLowerCase();
-  if (UPI_SCHEMES.some(scheme => lower.startsWith(scheme))) return true;
-  if (!lower.startsWith('intent:')) return false;
-  const packageName = lower.match(/;package=([^;]+)/)?.[1] || '';
-  return UPI_INTENT_PACKAGES.includes(packageName);
+export interface GatewayCloseInfo {
+  bankAuthenticationStarted: boolean;
 }
 
 export interface WorldlineCheckoutProps {
@@ -41,7 +26,7 @@ export interface WorldlineCheckoutProps {
   /** Legacy hosted URL — used only when sessionPayload is absent. */
   redirectUrl?: string | null;
   onComplete: (payload: { url: string; response?: Record<string, unknown> }) => void;
-  onCancel: () => void;
+  onCancel: (info: GatewayCloseInfo) => void;
   /**
    * Order checkout shows UPI, cards, and net banking together.
    * Wallet top-up leaves this off so the picked method stays scoped.
@@ -53,7 +38,9 @@ export interface WorldlineCheckoutProps {
 
 /**
  * Hosted Worldline/Paynimo checkout in an in-app WebView.
- * Loads Paynimo SDK with `sessionPayload` and detects gateway return URLs.
+ * Card "Next" and 3-D Secure stay in this view (`setSupportMultipleWindows={false}` on Android).
+ * iOS `window.open` is pulled back into the same view. The merchant return POST is not cancelled;
+ * success is decided by the caller from `/worldline/status`, not from this redirect.
  */
 export default function WorldlineCheckoutWebView({
   visible,
@@ -67,11 +54,14 @@ export default function WorldlineCheckoutWebView({
   const [loading, setLoading] = useState(true);
   const completed = useRef(false);
   const painted = useRef(false);
+  const bankAuthStarted = useRef(false);
+  const webRef = useRef<WebView<{}>>(null);
 
   React.useEffect(() => {
     if (visible) {
       completed.current = false;
       painted.current = false;
+      bankAuthStarted.current = false;
       setLoading(true);
     }
   }, [visible, sessionPayload, redirectUrl]);
@@ -85,18 +75,15 @@ export default function WorldlineCheckoutWebView({
       ? { uri: redirectUrl }
       : null;
 
-  const maybeComplete = useCallback(
+  const noteBank = (url: string) => {
+    if (isBankAuthenticationUrl(url)) bankAuthStarted.current = true;
+  };
+
+  const finishReturn = useCallback(
     (url: string) => {
       if (completed.current) return;
       if (!isWorldlineReturnUrl(url)) return;
-      const parsed = parseReturnUrl(url);
-      const hasResult =
-        hasWorldlineGatewayPayload(parsed) ||
-        String(parsed.paynimo_bridge || '') === '1' ||
-        String(parsed.status || '').trim() !== '';
-      // Card "Next" navigates to the bare return URL before any card details.
-      // Keep the checkout page open until the gateway actually posts a result.
-      if (!hasResult) return;
+      // The document has finished loading, so the return POST body has already reached the API.
       completed.current = true;
       onComplete({ url });
     },
@@ -105,13 +92,19 @@ export default function WorldlineCheckoutWebView({
 
   const onNavigationStateChange = useCallback(
     (nav: WebViewNavigation) => {
-      maybeComplete(nav.url);
+      noteBank(nav.url);
+      if (!nav.loading) finishReturn(nav.url);
     },
-    [maybeComplete],
+    [finishReturn],
   );
 
   const handleClose = () => {
-    if (!completed.current) onCancel();
+    if (completed.current) return;
+    onCancel({ bankAuthenticationStarted: bankAuthStarted.current });
+  };
+
+  const openInThisView = (url: string) => {
+    webRef.current?.injectJavaScript(`window.location.assign(${JSON.stringify(url)}); true;`);
   };
 
   if (!source) return null;
@@ -136,37 +129,49 @@ export default function WorldlineCheckoutWebView({
           <ActivityIndicator size="large" color={colors.primary} />
         </View>
       ) : null}
-      <WebView
+      <WebView<{}>
+        ref={webRef}
         source={source}
         onLoadStart={() => {
           if (!painted.current) setLoading(true);
         }}
-        onLoadEnd={() => {
+        onLoadEnd={event => {
           painted.current = true;
           setLoading(false);
+          finishReturn(event.nativeEvent.url);
         }}
         onError={() => setLoading(false)}
-        onHttpError={() => setLoading(false)}
+        onHttpError={event => {
+          setLoading(false);
+          finishReturn(event.nativeEvent.url);
+        }}
         onNavigationStateChange={onNavigationStateChange}
         onShouldStartLoadWithRequest={req => {
-          if (!/^(https?|about|data|blob|javascript):/i.test(req.url)) {
-            if (allowedUpiUrl(req.url)) {
-              Linking.openURL(req.url).catch(() => setLoading(false));
-            }
+          if (req.isTopFrame === false) {
+            return /^(https:|about:|data:|blob:)/i.test(req.url);
+          }
+          const decision = classifyCheckoutNavigation(req.url);
+          if (decision === 'upi') {
+            Linking.openURL(req.url).catch(() => setLoading(false));
             return false;
           }
-          // Checkout is already open. Card OTP and net banking live on the bank's own site.
-          if (!isSecureCheckoutUrl(req.url)) return false;
-          if (isWorldlineReturnUrl(req.url)) {
-            const parsed = parseReturnUrl(req.url);
-            const hasResult =
-              hasWorldlineGatewayPayload(parsed) ||
-              String(parsed.paynimo_bridge || '') === '1' ||
-              String(parsed.status || '').trim() !== '';
-            if (!hasResult) return false;
-          }
-          maybeComplete(req.url);
+          if (decision === 'block') return false;
+          noteBank(req.url);
+          // Let the return POST finish. Completing here would destroy the WebView first.
           return true;
+        }}
+        onOpenWindow={event => {
+          // Android already loads window.open in this WebView when multiple windows are off.
+          if (Platform.OS === 'android') return;
+          const url = event.nativeEvent.targetUrl;
+          const decision = classifyCheckoutNavigation(url);
+          if (decision === 'block' || !url) return;
+          if (decision === 'upi') {
+            Linking.openURL(url).catch(() => setLoading(false));
+            return;
+          }
+          noteBank(url);
+          openInThisView(url);
         }}
         onMessage={event => {
           try {
@@ -186,7 +191,9 @@ export default function WorldlineCheckoutWebView({
         javaScriptEnabled
         domStorageEnabled
         cacheEnabled
-        originWhitelist={['https://*', 'about:blank']}
+        // Android: card form and 3-D Secure window.open stay in this WebView.
+        setSupportMultipleWindows={false}
+        originWhitelist={['*']}
         mixedContentMode="never"
       />
     </Modal>
