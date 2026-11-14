@@ -1,9 +1,13 @@
 import {
   gatewayDismissAction,
   hasWorldlineGatewayPayload,
+  isWorldlineFailedStatus,
+  isWorldlinePendingStatus,
+  isWorldlinePaidStatus,
   isWorldlineReturnUrl,
   retryWhileHeld,
   shouldSubmitGatewayResponse,
+  switchFromOnlineDecision,
 } from '../src/utils/worldline';
 
 describe('Worldline return URL', () => {
@@ -27,6 +31,7 @@ describe('Worldline return URL', () => {
     expect(isWorldlineReturnUrl('https://acs.hdfcbank.com/acs/auth?txnStatus=Y&status=success')).toBe(false);
     expect(isWorldlineReturnUrl('https://3ds.icicibank.com/otp?txnstatus=0300')).toBe(false);
     expect(isWorldlineReturnUrl('https://secure.bank.example/pareq?status=failed')).toBe(false);
+    expect(isWorldlineReturnUrl('http://192.168.0.14:3333/api/v1/customer/payments/worldline/return')).toBe(true);
     expect(isWorldlineReturnUrl('http://evil.example/payments/worldline/return')).toBe(false);
     expect(isWorldlineReturnUrl('https://evil.example/?paynimo_bridge=1&status=success')).toBe(false);
   });
@@ -46,6 +51,29 @@ describe('Worldline return URL', () => {
     expect(shouldSubmitGatewayResponse({ status: 'success' })).toBe(false);
     expect(shouldSubmitGatewayResponse({ msg: '0300|success|...' })).toBe(true);
     expect(shouldSubmitGatewayResponse({ paymentMethod: { paymentTransaction: { statusCode: '0300' } } })).toBe(true);
+  });
+});
+
+describe('payment status classification', () => {
+  it('treats pending / timeout / unknown as in-flight, not failed', () => {
+    expect(isWorldlinePendingStatus({ uiState: 'PENDING_VERIFICATION' })).toBe(true);
+    expect(isWorldlinePendingStatus({ paymentOutcome: 'TIMEOUT' })).toBe(true);
+    expect(isWorldlinePendingStatus({ paymentOutcome: 'PENDING' })).toBe(true);
+    expect(isWorldlineFailedStatus({ uiState: 'PENDING_VERIFICATION' })).toBe(false);
+    expect(isWorldlineFailedStatus({ paymentOutcome: 'TIMEOUT', uiState: 'RETRY_AVAILABLE' })).toBe(
+      false,
+    );
+    expect(isWorldlineFailedStatus({ uiState: 'FAILED', paymentStatus: 'failed' })).toBe(true);
+    expect(isWorldlinePaidStatus({ uiState: 'PAID', orderPaymentStatus: 'paid' })).toBe(true);
+  });
+
+  it('blocks COD while verification is unknown so a debit is not cancelled', () => {
+    expect(switchFromOnlineDecision({ uiState: 'UNKNOWN', status: 'unknown' }, true)).toBe(
+      'block_other_method',
+    );
+    expect(
+      switchFromOnlineDecision({ uiState: 'PENDING_VERIFICATION', paymentStatus: 'pending' }, true),
+    ).toBe('block_other_method');
   });
 });
 
@@ -93,7 +121,8 @@ describe('retry while a gateway attempt is open', () => {
     expect(retryWhileHeld(pending, true, 'online')).toBe('reuse_online');
     expect(retryWhileHeld(pending, true, 'cod')).toBe('block_other_method');
     expect(retryWhileHeld(pending, true, 'wallet')).toBe('block_other_method');
-    expect(retryWhileHeld(null, false, 'cod')).toBe('block_other_method');
+    expect(retryWhileHeld(null, false, 'cod')).toBe('clear_and_continue');
+    expect(retryWhileHeld(null, false, 'wallet')).toBe('clear_and_continue');
   });
 
   it('does not open another payment after a capture, and allows a new attempt only after failure', () => {
@@ -101,5 +130,19 @@ describe('retry while a gateway attempt is open', () => {
     expect(retryWhileHeld({ uiState: 'PAID', orderPaymentStatus: 'paid' }, true, 'cod')).toBe('already_paid');
     expect(retryWhileHeld({ uiState: 'FAILED', paymentStatus: 'failed' }, true, 'online')).toBe('clear_and_continue');
     expect(retryWhileHeld({ uiState: 'FAILED', paymentStatus: 'failed' }, true, 'cod')).toBe('clear_and_continue');
+  });
+});
+
+describe('explicit switch from online to COD or wallet', () => {
+  it('allows COD after a waiting or failed card attempt, but not while verifying a capture', () => {
+    expect(switchFromOnlineDecision({ uiState: 'WAITING_FOR_PAYMENT', status: 'created' }, true)).toBe(
+      'clear_and_continue',
+    );
+    expect(switchFromOnlineDecision({ uiState: 'FAILED', paymentStatus: 'failed' }, true)).toBe('clear_and_continue');
+    expect(switchFromOnlineDecision(null, false)).toBe('clear_and_continue');
+    expect(switchFromOnlineDecision({ uiState: 'PENDING_VERIFICATION', paymentStatus: 'pending' }, true)).toBe(
+      'block_other_method',
+    );
+    expect(switchFromOnlineDecision({ uiState: 'PAID', orderPaymentStatus: 'paid' }, true)).toBe('already_paid');
   });
 });

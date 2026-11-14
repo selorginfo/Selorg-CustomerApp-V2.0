@@ -19,7 +19,15 @@ import { toLocalOrder } from '../utils/mappers';
 import { showToast } from '../utils/toast';
 import { usePager } from '../utils/usePager';
 import { getErrorCode, getErrorMessage } from '../utils/apiError';
-import { isPayMethod, settlementKind, wantedSettlement } from '../utils/paymentAttempt';
+import {
+  canReuseUnpaidOnlineAttempt,
+  isPayMethod,
+  settlementKind,
+  shouldResetPayStateForNewCheckout,
+  shouldSkipPrepareFreshPaymentSession,
+  unpaidBelongsToCurrentCart,
+  wantedSettlement,
+} from '../utils/paymentAttempt';
 import {
   parseReturnUrl,
   isWorldlinePaidStatus,
@@ -29,6 +37,7 @@ import {
   shouldSubmitGatewayResponse,
   gatewayDismissAction,
   retryWhileHeld,
+  switchFromOnlineDecision,
   type GatewayDismissAction,
 } from '../utils/worldline';
 
@@ -117,6 +126,15 @@ interface OrdersContextType {
   ) => Promise<PlaceOrderResult>;
   cancelGatewayPayment: (options?: { bankAuthenticationStarted?: boolean }) => Promise<GatewayDismissAction>;
   retryPayment: () => void;
+  /**
+   * Start a brand-new checkout payment (no orderId resume). Clears leftover
+   * gateway UI and terminal payState from a previous finished order. Keeps an
+   * unpaid online attempt only when it still matches this cart.
+   */
+  prepareFreshPaymentSession: (options?: {
+    currentCartSignature?: string;
+    resumeOrderId?: string;
+  }) => void;
   canCancel: (order: Order) => boolean;
   /** Resolves true when the server accepted the cancellation. */
   cancelOrder: (order: Order, reason?: string) => Promise<boolean>;
@@ -170,7 +188,12 @@ export const OrdersProvider: React.FC<{ children: ReactNode }> = ({ children }) 
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(false);
   const [activeOrder, setActiveOrder] = useState<Order | null>(null);
-  const [payState, setPayState] = useState<PayState>('idle');
+  const [payState, setPayStateRaw] = useState<PayState>('idle');
+  const payStateRef = useRef<PayState>('idle');
+  const setPayState = useCallback((next: PayState) => {
+    payStateRef.current = next;
+    setPayStateRaw(next);
+  }, []);
   const [payError, setPayError] = useState('');
   const [failedMethod, setFailedMethod] = useState<PayMethod | null>(null);
   const [gatewaySessionPayload, setGatewaySessionPayload] = useState<Record<string, unknown> | null>(null);
@@ -242,9 +265,82 @@ export const OrdersProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     refreshActiveOrder();
   }, [userId, loadOrders, refreshActiveOrder]);
 
+  const clearGatewayUi = useCallback(() => {
+    setGatewaySessionPayload(null);
+    setPendingGatewayOrderId(null);
+    setPendingGatewayTxnId(null);
+  }, []);
+
+  // Keep cart/address in refs so prepareFreshPaymentSession stays referentially
+  // stable — an unstable callback re-fires PaymentScreen's useFocusEffect and
+  // wipes an in-flight Paynimo session (Pay Online appears to reload forever).
+  const cartRef = useRef(cart);
+  cartRef.current = cart;
+  const selectedAddressIdRef = useRef(selectedAddressId);
+  selectedAddressIdRef.current = selectedAddressId;
+
+  const prepareFreshPaymentSession = useCallback(
+    (options?: { currentCartSignature?: string; resumeOrderId?: string }) => {
+      // Never wipe an in-flight create/Paynimo session. Spurious focus re-entry
+      // (e.g. wallet reload recreating a useFocusEffect callback) used to call
+      // this while awaiting_gateway and bounce the shopper back to method picker.
+      if (shouldSkipPrepareFreshPaymentSession(payStateRef.current)) {
+        return;
+      }
+      clearGatewayUi();
+      setPayError('');
+      setFailedMethod(null);
+      if (shouldResetPayStateForNewCheckout(payStateRef.current)) {
+        setPayState('idle');
+      }
+      if (options?.resumeOrderId) {
+        const unpaid = unpaidOnlineOrderRef.current;
+        if (unpaid && unpaid.id !== options.resumeOrderId) {
+          unpaidOnlineOrderRef.current = null;
+        }
+        return;
+      }
+      const unpaid = unpaidOnlineOrderRef.current;
+      if (!unpaid) return;
+      const currentCart = cartRef.current;
+      const addressId = selectedAddressIdRef.current;
+      let sig = options?.currentCartSignature;
+      if (!sig && addressId && currentCart.items.length > 0) {
+        sig = cartSignature(
+          currentCart.items.map(i => ({
+            productId: i.productId,
+            variantId: i.variantId,
+            quantity: i.quantity,
+          })),
+          addressId,
+          currentCart.coupon,
+          currentCart.tip,
+          'online',
+        );
+      }
+      if (sig && !unpaidBelongsToCurrentCart(unpaid, sig)) {
+        // Previous order's gateway attempt — detach only. Do not cancel that order here.
+        unpaidOnlineOrderRef.current = null;
+        placeIdempotencyKeyRef.current = null;
+      }
+    },
+    [clearGatewayUi],
+  );
+
   const placeOrder = useCallback(
     async (method: PayMethod, receiver?: OrderReceiver): Promise<PlaceOrderResult> => {
-      if (payState === 'processing' || payState === 'awaiting_gateway') {
+      const currentPayState = payStateRef.current;
+      // A prior order left payState at `success`/`failed`. Never block a new cart.
+      if (shouldResetPayStateForNewCheckout(currentPayState)) {
+        setPayState('idle');
+        clearGatewayUi();
+      }
+      // COD / wallet may run while a WebView session is still marked awaiting —
+      // placeOrder clears that session below. Online must not double-open.
+      if (payStateRef.current === 'processing') {
+        return { success: false };
+      }
+      if (method === 'online' && payStateRef.current === 'awaiting_gateway') {
         return { success: false };
       }
       if (cart.items.length === 0) return { success: false, message: 'Your cart is empty' };
@@ -264,56 +360,6 @@ export const OrdersProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         setPayError(msg);
         setFailedMethod(method);
         return { success: false, message: msg };
-      }
-
-      setPayState('processing');
-      setPayError('');
-      setFailedMethod(null);
-
-      // COD and wallet never go through Worldline. A still-open card or UPI
-      // attempt must not be cancelled, and must not be replaced by a second order.
-      if (method !== 'online') {
-        const staleOnline = unpaidOnlineOrderRef.current;
-        if (staleOnline?.id) {
-          let decision: ReturnType<typeof retryWhileHeld> = 'block_other_method';
-          try {
-            decision = retryWhileHeld(await paymentsApi.getWorldlineStatus(staleOnline.id), true, method);
-          } catch {
-            decision = retryWhileHeld(null, false, method);
-          }
-          if (decision === 'already_paid') {
-            unpaidOnlineOrderRef.current = null;
-            try {
-              const existing = toLocalOrder(await ordersApi.getOrder(staleOnline.id));
-              existing.paymentStatus = 'paid';
-              setOrders(prev => [existing, ...prev.filter(o => o.id !== existing.id)]);
-              setActiveOrder(existing);
-              setPayState('success');
-              await cart.clearCart();
-              return { success: true, order: existing };
-            } catch {
-              setPayState('idle');
-              return {
-                success: false,
-                message: 'This order is already paid. Check Orders before paying again.',
-              };
-            }
-          }
-          if (decision === 'block_other_method') {
-            const msg = 'A payment is still being verified. Check Orders before choosing another method.';
-            setPayState('error');
-            setPayError(msg);
-            setFailedMethod('online');
-            return { success: false, message: msg, pendingVerification: true };
-          }
-        }
-        unpaidOnlineOrderRef.current = null;
-        setGatewaySessionPayload(null);
-        setPendingGatewayOrderId(null);
-        setPendingGatewayTxnId(null);
-        if (staleOnline?.id) {
-          await ordersApi.cancelOrder(staleOnline.id, 'Switched to another payment method').catch(() => {});
-        }
       }
 
       const payload: CreateOrderPayload = {
@@ -336,9 +382,85 @@ export const OrdersProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       }
       placeSignatureRef.current = signature;
 
+      setPayState('processing');
+      setPayError('');
+      setFailedMethod(null);
+
+      // COD and wallet never go through Worldline.
+      if (method !== 'online') {
+        const staleOnline = unpaidOnlineOrderRef.current;
+        if (staleOnline?.id && !unpaidBelongsToCurrentCart(staleOnline, signature)) {
+          // New cart after a previous order — detach gateway state only.
+          unpaidOnlineOrderRef.current = null;
+          placeIdempotencyKeyRef.current = null;
+          clearGatewayUi();
+        } else if (staleOnline?.id) {
+          let status: Awaited<ReturnType<typeof paymentsApi.getWorldlineStatus>> | null = null;
+          let decision: ReturnType<typeof switchFromOnlineDecision> = 'clear_and_continue';
+          try {
+            status = await paymentsApi.getWorldlineStatus(staleOnline.id, { timeoutMs: 8000 });
+            decision = switchFromOnlineDecision(status, true);
+          } catch {
+            decision = switchFromOnlineDecision(null, false);
+          }
+          if (decision === 'already_paid') {
+            unpaidOnlineOrderRef.current = null;
+            clearGatewayUi();
+            try {
+              const existing = toLocalOrder(await ordersApi.getOrder(staleOnline.id));
+              existing.paymentStatus = 'paid';
+              setOrders(prev => [existing, ...prev.filter(o => o.id !== existing.id)]);
+              setActiveOrder(existing);
+              setPayState('success');
+              void cart.clearCart();
+              return { success: true, order: existing };
+            } catch {
+              setPayState('idle');
+              return {
+                success: false,
+                message: 'This order is already paid. Check Orders before paying again.',
+              };
+            }
+          }
+          if (decision === 'block_other_method') {
+            clearGatewayUi();
+            const msg =
+              'A card or UPI payment is still being verified. Check Orders before choosing another method.';
+            setPayState('error');
+            setPayError(msg);
+            setFailedMethod('online');
+            return { success: false, message: msg, pendingVerification: true };
+          }
+          const latest = status?.latestPayment as { txnId?: string } | undefined;
+          const txnId = pendingGatewayTxnId || latest?.txnId || (status?.txnId as string | undefined) || null;
+          if (txnId) {
+            await paymentsApi
+              .abortWorldlinePayment({
+                orderId: staleOnline.id,
+                txnId: String(txnId),
+                reason: 'switched_payment_method',
+              })
+              .catch(() => {});
+          }
+          await ordersApi.cancelOrder(staleOnline.id, 'Switched to another payment method').catch(() => {});
+          unpaidOnlineOrderRef.current = null;
+          placeIdempotencyKeyRef.current = null;
+          clearGatewayUi();
+        } else {
+          clearGatewayUi();
+        }
+      }
+
       try {
         // Retry of an online payment: reuse the order already created for this
         // exact cart while the server still holds it open and unpaid.
+        if (method === 'online' && unpaidOnlineOrderRef.current) {
+          const prev = unpaidOnlineOrderRef.current;
+          if (!canReuseUnpaidOnlineAttempt(prev, signature)) {
+            // Different cart than the leftover attempt — start a new online order.
+            unpaidOnlineOrderRef.current = null;
+          }
+        }
         if (method === 'online' && unpaidOnlineOrderRef.current) {
           const prev = unpaidOnlineOrderRef.current;
           let reusable: Order | null = null;
@@ -391,7 +513,7 @@ export const OrdersProvider: React.FC<{ children: ReactNode }> = ({ children }) 
               setOrders(current => [paidOrder, ...current.filter(o => o.id !== paidOrder.id)]);
               setActiveOrder(paidOrder);
               setPayState('success');
-              await cart.clearCart();
+              void cart.clearCart();
               return { success: true, order: paidOrder };
             }
             unpaidOnlineOrderRef.current = { id: reusable.id, signature };
@@ -518,7 +640,7 @@ export const OrdersProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         setOrders(prev => [order, ...prev]);
         setActiveOrder(order);
         setPayState('success');
-        await cart.clearCart();
+        void cart.clearCart();
         return { success: true, order };
       } catch (err: unknown) {
         const msg = getErrorMessage(err, 'Could not place order. Please retry.');
@@ -533,12 +655,17 @@ export const OrdersProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         return { success: false, message: msg };
       }
     },
-    [payState, cart, selectedAddressId],
+    [cart, selectedAddressId, pendingGatewayTxnId, clearGatewayUi],
   );
 
   const payExistingOrder = useCallback(
     async (orderId: string): Promise<PlaceOrderResult> => {
-      if (payState === 'processing' || payState === 'awaiting_gateway') {
+      const currentPayState = payStateRef.current;
+      if (
+        currentPayState === 'processing' ||
+        currentPayState === 'awaiting_gateway' ||
+        currentPayState === 'success'
+      ) {
         return { success: false };
       }
       if (!orderId) return { success: false, message: 'Order not found' };
@@ -586,23 +713,28 @@ export const OrdersProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         return { success: false, message: msg };
       }
     },
-    [payState],
+    [],
   );
 
   const completeGatewayPayment = useCallback(
     async (orderId: string, returnUrlOrResponse: string | Record<string, unknown>): Promise<PlaceOrderResult> => {
-      setPayState('processing');
+      const response =
+        typeof returnUrlOrResponse === 'string' ? parseReturnUrl(returnUrlOrResponse) : returnUrlOrResponse;
+      const bridgeHint =
+        typeof returnUrlOrResponse === 'string' ? presentationMessageFromReturn(response) : '';
+      const submittingGateway = shouldSubmitGatewayResponse(response);
+
+      // Keep the WebView mounted while we only poll status. Switching to
+      // `processing` unmounts Paynimo and can cancel an in-flight bank return POST.
+      if (submittingGateway) {
+        setPayState('processing');
+      }
       setPayError('');
       try {
-        const response =
-          typeof returnUrlOrResponse === 'string' ? parseReturnUrl(returnUrlOrResponse) : returnUrlOrResponse;
-        const bridgeHint =
-          typeof returnUrlOrResponse === 'string' ? presentationMessageFromReturn(response) : '';
-
         // A redirect (`paynimo_bridge=1` or a bare return URL) is not a capture.
         // Posting it to /complete can overwrite a good payment. Only raw gateway
         // crypto fields are submitted. Paid is decided by /worldline/status.
-        if (shouldSubmitGatewayResponse(response)) {
+        if (submittingGateway) {
           await paymentsApi.completeWorldlinePayment({
             orderId,
             txnId: pendingGatewayTxnId || undefined,
@@ -615,26 +747,47 @@ export const OrdersProvider: React.FC<{ children: ReactNode }> = ({ children }) 
 
         let paid = false;
         let failed = false;
-        for (let i = 0; i < 10; i += 1) {
-          const status = await paymentsApi.getWorldlineStatus(orderId);
-          if (isWorldlinePaidStatus(status)) {
-            paid = true;
-            break;
+        let sawStatus = false;
+        for (let i = 0; i < 12; i += 1) {
+          try {
+            const status = await paymentsApi.getWorldlineStatus(orderId, { timeoutMs: 12000 });
+            sawStatus = true;
+            if (isWorldlinePaidStatus(status)) {
+              paid = true;
+              break;
+            }
+            if (isWorldlineFailedStatus(status)) {
+              failed = true;
+              break;
+            }
+            if (!isWorldlinePendingStatus(status)) break;
+          } catch {
+            // Network blip — keep polling; never treat silence as decline.
           }
-          if (isWorldlineFailedStatus(status)) {
-            failed = true;
-            break;
-          }
-          if (!isWorldlinePendingStatus(status)) break;
           await new Promise<void>(r => setTimeout(() => r(), 1500));
         }
 
-        const detail = await ordersApi.getOrder(orderId);
-        const order = toLocalOrder(detail);
-        if (paid) order.paymentStatus = 'paid';
+        let order: Order | undefined;
+        try {
+          const detail = await ordersApi.getOrder(orderId);
+          order = toLocalOrder(detail);
+          if (paid) order.paymentStatus = 'paid';
+          setOrders(prev => [order!, ...prev.filter(o => o.id !== order!.id)]);
+          setActiveOrder(order);
+        } catch {
+          if (paid) {
+            // Status already confirmed paid — do not fail the customer on a detail fetch blip.
+            setPayState('success');
+            setFailedMethod(null);
+            setGatewaySessionPayload(null);
+            setPendingGatewayOrderId(null);
+            setPendingGatewayTxnId(null);
+            unpaidOnlineOrderRef.current = null;
+            void cart.clearCart();
+            return { success: true, order: { id: orderId, paymentStatus: 'paid' } as Order };
+          }
+        }
 
-        setOrders(prev => [order, ...prev.filter(o => o.id !== order.id)]);
-        setActiveOrder(order);
         setGatewaySessionPayload(null);
         setPendingGatewayOrderId(null);
         setPendingGatewayTxnId(null);
@@ -642,14 +795,13 @@ export const OrdersProvider: React.FC<{ children: ReactNode }> = ({ children }) 
           unpaidOnlineOrderRef.current = null;
           setPayState('success');
           setFailedMethod(null);
-          await cart.clearCart();
+          void cart.clearCart();
           return { success: true, order };
         }
-        if (!failed) {
-          // Still created, pending, or unknown. Do not show a hard failure and do not
-          // drop the order — a later retry must reuse it instead of charging again.
+        if (!sawStatus || !failed) {
+          // Still created, pending, unknown, or status unreachable. Never hard-fail.
           if (!unpaidOnlineOrderRef.current) {
-            unpaidOnlineOrderRef.current = { id: order.id, signature: `resume:${order.id}` };
+            unpaidOnlineOrderRef.current = { id: orderId, signature: `resume:${orderId}` };
           }
           setPayState('idle');
           setFailedMethod(null);
@@ -667,11 +819,18 @@ export const OrdersProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         setPayError(msg);
         return { success: false, message: msg, order };
       } catch (err: unknown) {
-        const msg = getErrorMessage(err, 'Payment confirmation failed');
-        setPayState('failed');
-        setPayError(msg);
-        setFailedMethod('online');
-        return { success: false, message: msg };
+        // Outer errors (complete POST, unexpected) must not look like a bank decline.
+        if (!unpaidOnlineOrderRef.current) {
+          unpaidOnlineOrderRef.current = { id: orderId, signature: `resume:${orderId}` };
+        }
+        setPayState('idle');
+        setPayError('');
+        setFailedMethod(null);
+        return {
+          success: false,
+          pendingVerification: true,
+          message: getErrorMessage(err, 'Payment is still being verified. Check Orders before paying again.'),
+        };
       }
     },
     [cart, pendingGatewayTxnId],
@@ -695,11 +854,17 @@ export const OrdersProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       }
       if (action === 'abort' && orderId && txnId) {
         try {
-          await paymentsApi.abortWorldlinePayment({
+          const abortResult = await paymentsApi.abortWorldlinePayment({
             orderId,
             txnId,
             reason: 'user_cancelled',
           });
+          // Backend may refuse to void when Worldline still shows capture/pending.
+          if (abortResult?.settledFromInquiry) {
+            action = 'finish_paid';
+          } else if (abortResult?.held || abortResult?.aborted === false) {
+            action = 'hold';
+          }
         } catch {
           // The abort did not land. Leave the order open so a capture can still reconcile.
           action = 'hold';
@@ -711,6 +876,11 @@ export const OrdersProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       if (action === 'abort') {
         unpaidOnlineOrderRef.current = null;
         placeIdempotencyKeyRef.current = null;
+      } else if (action === 'hold' && orderId) {
+        // Keep the unpaid attempt so status polling / retry can still settle a debit.
+        if (!unpaidOnlineOrderRef.current) {
+          unpaidOnlineOrderRef.current = { id: orderId, signature: `resume:${orderId}` };
+        }
       }
       if (action !== 'finish_paid') {
         setPayState('idle');
@@ -726,8 +896,10 @@ export const OrdersProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     setPayState('idle');
     setPayError('');
     setFailedMethod(null);
-    setGatewaySessionPayload(null);
-  }, []);
+    // Drop the WebView / session UI. Keep unpaidOnlineOrderRef so an online
+    // retry can reuse the same order; COD/wallet clear that ref in placeOrder.
+    clearGatewayUi();
+  }, [clearGatewayUi]);
 
   const canCancel = useCallback((order: Order) => ['pending', 'confirmed'].includes(order.status), []);
 
@@ -794,7 +966,13 @@ export const OrdersProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       setActiveOrder(prev =>
         prev?.id === order.id || (!prev && ACTIVE_STATUSES.includes(order.status)) ? order : prev,
       );
-      setOrders(prev => prev.map(o => (o.id === order.id ? { ...o, status: order.status } : o)));
+      setOrders(prev => {
+        const existing = prev.find(o => o.id === order.id);
+        if (existing) {
+          return prev.map(o => (o.id === order.id ? { ...o, ...order, timeline: order.timeline } : o));
+        }
+        return [order, ...prev];
+      });
       return order;
     } catch {
       return null;
@@ -828,6 +1006,7 @@ export const OrdersProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       completeGatewayPayment,
       cancelGatewayPayment,
       retryPayment,
+      prepareFreshPaymentSession,
       canCancel,
       cancelOrder,
       reorder,
@@ -854,6 +1033,7 @@ export const OrdersProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       completeGatewayPayment,
       cancelGatewayPayment,
       retryPayment,
+      prepareFreshPaymentSession,
       canCancel,
       cancelOrder,
       reorder,

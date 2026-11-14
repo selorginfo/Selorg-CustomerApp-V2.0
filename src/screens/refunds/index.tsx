@@ -11,7 +11,8 @@ import { RootStackParamList } from '../../navigation/types';
 
 const REFUND_STATUS_META: Record<string, { label: string; c: string; bg: string }> = {
   pending: { label: 'Pending', c: '#B5741A', bg: '#FAF1DF' },
-  approved: { label: 'Approved', c: '#2B6C8C', bg: '#E4F0F6' },
+  processing: { label: 'On the way', c: '#2B6C8C', bg: '#E4F0F6' },
+  approved: { label: 'On the way', c: '#2B6C8C', bg: '#E4F0F6' },
   processed: { label: 'Processed', c: '#2F7D32', bg: '#EAF1E1' },
   completed: { label: 'Completed', c: '#2F7D32', bg: '#EAF1E1' },
   rejected: { label: 'Rejected', c: '#D32F2F', bg: '#FDECEC' },
@@ -61,7 +62,7 @@ export default function Refunds() {
               <View style={styles.topRow}>
                 <View style={styles.flex1}>
                   <Text style={styles.amount}>{formatCurrency(r.amount)} · #{r.orderNumber}</Text>
-                  <Text style={styles.reason}>{r.reasonText} · to {r.method === 'wallet' ? 'wallet' : 'original payment'}</Text>
+                  <Text style={styles.reason}>{r.reasonText} · to {r.destination || (r.method === 'wallet' ? 'wallet' : 'original payment')}</Text>
                 </View>
                 <View style={[styles.pill, { backgroundColor: meta.bg }]}>
                   <Text style={[styles.pillLabel, { color: meta.c }]}>{meta.label}</Text>

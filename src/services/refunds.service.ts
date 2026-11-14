@@ -45,4 +45,10 @@ export const refundsApi = {
 
   createRefundRequest: (data: CreateRefundInput): Promise<ApiRefund> =>
     SelorgApi.post('/refunds/request', { data }).then(unwrap<ApiRefund>),
+
+  submitBankAccount: (
+    id: string,
+    account: { accountHolder: string; accountNumber: string; ifsc: string; bankName: string },
+  ): Promise<ApiRefund> =>
+    SelorgApi.post(`/refunds/${id}/bank-account`, { data: account }).then(unwrap<ApiRefund>),
 };

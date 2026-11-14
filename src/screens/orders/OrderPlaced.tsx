@@ -1,5 +1,5 @@
-import React, { useEffect } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -7,7 +7,9 @@ import type { RouteProp } from '@react-navigation/native';
 import { AnimatedIcon, CleanBadges, PrimaryButton, ScreenContainer } from '../../components';
 import { colors, fontFamily, radii } from '../../theme';
 import { formatCurrency } from '../../utils/format';
-import { useOrders } from '../../context/OrdersContext';
+import { useOrders, type Order } from '../../context/OrdersContext';
+import { ordersApi } from '../../services/orders.service';
+import { toLocalOrder } from '../../utils/mappers';
 import type { RootStackParamList } from '../../navigation/types';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -18,16 +20,45 @@ const CLEAN_CHOICE = ['Pesticide-Free', 'Fertilizer-Free', 'Chemical-Free', 'Non
 export default function OrderPlacedScreen() {
   const navigation = useNavigation<Nav>();
   const route = useRoute<Rt>();
-  const { orders } = useOrders();
-  const order = orders.find(o => o.id === route.params.orderId);
+  const { orders, activeOrder } = useOrders();
+  const orderId = route.params.orderId;
+  const fromContext =
+    orders.find(o => o.id === orderId) || (activeOrder?.id === orderId ? activeOrder : null);
+  const [fetchedOrder, setFetchedOrder] = useState<Order | null>(null);
+  const [lookupFailed, setLookupFailed] = useState(false);
+  const order = fromContext || fetchedOrder;
 
+  // COD/wallet used to navigate here before `orders` flushed, or a concurrent
+  // list refresh dropped the new row. Fetch that order instead of bouncing to Main.
   useEffect(() => {
-    if (!order) {
-      navigation.reset({ index: 0, routes: [{ name: 'Main' }] });
-    }
-  }, [order, navigation]);
+    if (fromContext || fetchedOrder) return;
+    let alive = true;
+    (async () => {
+      try {
+        const detail = await ordersApi.getOrder(orderId);
+        if (!alive) return;
+        setFetchedOrder(toLocalOrder(detail));
+      } catch {
+        if (alive) setLookupFailed(true);
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [fromContext, fetchedOrder, orderId]);
 
-  if (!order) return null;
+  if (!order) {
+    return (
+      <ScreenContainer background={colors.white} edges={['top', 'bottom']}>
+        <View style={styles.loadingWrap}>
+          <ActivityIndicator size="large" color={colors.primary} />
+          <Text style={styles.loadingText}>
+            {lookupFailed ? 'We could not open this order yet. It is saved — check Orders.' : 'Confirming your order…'}
+          </Text>
+        </View>
+      </ScreenContainer>
+    );
+  }
 
   const unpaid = order.paymentStatus === 'pending' || order.paymentStatus === 'failed';
   if (unpaid) {
@@ -106,6 +137,19 @@ export default function OrderPlacedScreen() {
 }
 
 const styles = StyleSheet.create({
+  loadingWrap: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+    paddingHorizontal: 24,
+  },
+  loadingText: {
+    fontFamily: fontFamily.medium,
+    fontSize: 14,
+    color: colors.textMuted,
+    textAlign: 'center',
+  },
   gradient: { flex: 1 },
   content: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 24, gap: 12 },
   badge: {

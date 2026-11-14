@@ -108,6 +108,8 @@ export default function CheckoutScreen() {
   const navigation = useNavigation<Nav>();
   const cart = useCart();
   const { items, totalItems, tip, setTip, grandTotal, coupon, discount, applyCoupon, removeCoupon, itemTotal } = cart;
+  const [customTip, setCustomTip] = useState('');
+  const presetTip = TIP_OPTIONS.includes(tip);
   const { selectedAddress } = useAddress();
   const wallet = useWallet();
 
@@ -259,13 +261,19 @@ export default function CheckoutScreen() {
         showToast('Enter a valid 10-digit receiver number starting with 6–9', 'err');
         return;
       }
-      navigation.navigate('Payment', {
-        method: payMethod,
-        receiver: { name, phone },
+      navigation.navigate({
+        name: 'Payment',
+        params: { method: payMethod, receiver: { name, phone } },
+        merge: false,
       });
       return;
     }
-    navigation.navigate('Payment', { method: payMethod });
+    // merge: false so a prior Payment route cannot keep orderId / online session params.
+    navigation.navigate({
+      name: 'Payment',
+      params: { method: payMethod },
+      merge: false,
+    });
   };
 
   const handleApplyCoupon = () => {
@@ -415,16 +423,37 @@ export default function CheckoutScreen() {
 
           {/* Tip */}
           <Text style={styles.sectionLabel}>DELIVERY TIP</Text>
+          <Text style={styles.tipHelp}>Optional. The full tip goes to your rider after a successful delivery.</Text>
           <View style={styles.tipRow}>
             {TIP_OPTIONS.map(t => {
-              const active = tip === t;
+              const active = presetTip && tip === t;
               return (
-                <Pressable key={t} style={[styles.tipChip, active && styles.tipChipActive]} onPress={() => setTip(t)}>
-                  <Text style={[styles.tipLabel, active && styles.tipLabelActive]}>{t === 0 ? 'None' : `₹${t}`}</Text>
+                <Pressable
+                  key={t}
+                  style={[styles.tipChip, active && styles.tipChipActive]}
+                  onPress={() => {
+                    setCustomTip('');
+                    setTip(t);
+                  }}
+                >
+                  <Text style={[styles.tipLabel, active && styles.tipLabelActive]}>{t === 0 ? 'Skip' : `₹${t}`}</Text>
                 </Pressable>
               );
             })}
           </View>
+          <TextInput
+            value={customTip}
+            onChangeText={value => {
+              const digits = value.replace(/[^0-9]/g, '').slice(0, 3);
+              setCustomTip(digits);
+              setTip(digits ? Number(digits) : 0);
+            }}
+            keyboardType="number-pad"
+            placeholder="Custom tip, up to ₹500"
+            placeholderTextColor={colors.textMuted}
+            style={styles.tipInput}
+          />
+          {!presetTip && tip > 0 ? <Text style={styles.tipHelp}>Custom tip: ₹{tip}</Text> : null}
 
           {/* Payment method */}
           <Text style={styles.sectionLabel}>PAYMENT METHOD</Text>
@@ -673,6 +702,18 @@ const styles = StyleSheet.create({
   summaryPrice: { fontFamily: fontFamily.bold, fontSize: 13, color: colors.text, flexShrink: 0 },
 
   tipRow: { flexDirection: 'row', gap: 8 },
+  tipHelp: { fontFamily: fontFamily.regular, fontSize: 12, color: colors.textMuted, marginBottom: 8 },
+  tipInput: {
+    marginTop: 10,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radii.md,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontFamily: fontFamily.bold,
+    fontSize: 14,
+    color: colors.text,
+  },
   tipChip: {
     flex: 1,
     minWidth: 0,

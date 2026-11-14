@@ -69,9 +69,11 @@ export function isWorldlineReturnUrl(url: string): boolean {
     /\/worldline\/return\/?$/.test(path) ||
     /\/paynimo-return(?:\.html)?\/?$/.test(path);
   if (returnPath) {
-    // Production callbacks are HTTPS. HTTP is only the local API, not an arbitrary site.
+    // Production callbacks are HTTPS. HTTP is only the local / LAN API, not an arbitrary site.
     if (/^https:\/\//i.test(raw)) return true;
-    return host === 'localhost' || host === '127.0.0.1' || isSelorgHost(host);
+    if (host === 'localhost' || host === '127.0.0.1' || isSelorgHost(host)) return true;
+    // Device Metro builds rewrite returnUrl to the PC LAN IP (e.g. 192.168.x.x:3333).
+    return /^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[0-1])\.)/.test(host);
   }
   if (!lower.includes('paynimo_bridge=1')) return false;
   return isSelorgHost(host);
@@ -105,7 +107,20 @@ export function isWorldlinePaidStatus(status: {
   return st === 'success' || st === 'paid';
 }
 
-export function isWorldlinePendingStatus(status: { uiState?: string; paymentStatus?: string }): boolean {
+export function isWorldlinePendingStatus(status: {
+  uiState?: string;
+  paymentStatus?: string;
+  paymentOutcome?: string;
+}): boolean {
+  const outcome = String(status.paymentOutcome || '').toUpperCase();
+  if (
+    outcome === 'PENDING' ||
+    outcome === 'TIMEOUT' ||
+    outcome === 'INITIATED' ||
+    outcome === 'AWAITING_PAYMENT'
+  ) {
+    return true;
+  }
   const ui = String(status.uiState || '').toUpperCase();
   return ui === 'PENDING_VERIFICATION' || ui === 'WAITING_FOR_PAYMENT' || ui === 'UNKNOWN';
 }
@@ -114,7 +129,12 @@ export function isWorldlineFailedStatus(status: {
   paymentStatus?: string;
   orderPaymentStatus?: string;
   uiState?: string;
+  paymentOutcome?: string;
 }): boolean {
+  // Timeout / pending outcomes are not declines — keep reconciling.
+  if (isWorldlinePendingStatus(status) || isWorldlinePaidStatus(status)) return false;
+  const outcome = String(status.paymentOutcome || '').toUpperCase();
+  if (outcome === 'TIMEOUT' || outcome === 'PENDING') return false;
   const ui = String(status.uiState || '').toUpperCase();
   if (ui === 'FAILED' || ui === 'RETRY_AVAILABLE') return true;
   const pay = String(status.paymentStatus || status.orderPaymentStatus || '').toLowerCase();
@@ -179,10 +199,42 @@ export function retryWhileHeld(
   statusKnown: boolean,
   method: 'online' | 'cod' | 'wallet',
 ): HeldPaymentRetry {
-  if (!statusKnown || !status) return method === 'online' ? 'reuse_online' : 'block_other_method';
+  if (!statusKnown || !status) {
+    // Online can reopen the same unpaid attempt. Cash/wallet must not stay blocked
+    // when the status call fails after an abandoned card/UPI session.
+    return method === 'online' ? 'reuse_online' : 'clear_and_continue';
+  }
   if (isWorldlinePaidStatus(status)) return 'already_paid';
   if (isWorldlineFailedStatus(status)) return 'clear_and_continue';
   return method === 'online' ? 'reuse_online' : 'block_other_method';
+}
+
+/**
+ * Explicit switch away from online (COD / wallet).
+ * - Paid → finish that order (do not place COD).
+ * - Failed / waiting-before-capture / unknown → abort and continue with the new method.
+ * - PENDING_VERIFICATION → block (bank may already have authorized).
+ */
+export function switchFromOnlineDecision(
+  status: {
+    paymentStatus?: string;
+    status?: string;
+    orderPaymentStatus?: string;
+    uiState?: string;
+    walletCredited?: boolean;
+  } | null | undefined,
+  statusKnown: boolean,
+): HeldPaymentRetry {
+  if (!statusKnown || !status) return 'clear_and_continue';
+  if (isWorldlinePaidStatus(status)) return 'already_paid';
+  if (isWorldlineFailedStatus(status)) return 'clear_and_continue';
+  const ui = String(status.uiState || '').toUpperCase();
+  // Pending / unknown / verifying — bank may already have debited. Never cancel.
+  if (ui === 'PENDING_VERIFICATION' || ui === 'UNKNOWN' || isInFlightGatewayStatus(status)) {
+    return 'block_other_method';
+  }
+  // WAITING_FOR_PAYMENT / created — shopper left before capture.
+  return 'clear_and_continue';
 }
 
 /** Prefer a human message from a bridge/result URL when present. */

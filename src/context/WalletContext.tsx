@@ -102,6 +102,9 @@ interface WalletContextType {
 
   topUpSessionPayload: Record<string, unknown> | null;
 
+  /** Order id for the open Worldline top-up session (status polling). */
+  pendingTopUpOrderId: string | null;
+
   topUpProcessing: boolean;
 
   covers: (amount: number) => boolean;
@@ -508,6 +511,8 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({ children }) 
 
       topUpSessionPayload,
 
+      pendingTopUpOrderId,
+
       topUpProcessing,
 
       covers,
@@ -534,6 +539,8 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       cancelTopUp,
 
       topUpSessionPayload,
+
+      pendingTopUpOrderId,
 
       topUpProcessing,
 

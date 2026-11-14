@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { ActivityIndicator, AppState, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import LoadMoreFooter from '../../components/LoadMoreFooter';
@@ -9,6 +9,7 @@ import type { IconName } from '../../components';
 import { colors, fontFamily, radii, spacing } from '../../theme';
 import { formatCurrency } from '../../utils/format';
 import WorldlineCheckoutWebView from '../../components/WorldlineCheckoutWebView';
+import { watchWorldlineStatus } from '../../utils/worldlineStatusWatch';
 
 const TOPUP_PRESETS = [100, 250, 500];
 import type { WalletTxn } from '../../context/WalletContext';
@@ -37,7 +38,20 @@ function shortDate(ts: string) {
 
 export default function WalletScreen() {
   const navigation = useNavigation<Nav>();
-  const { wallet, refreshWallet, reloadWallet, hasMore, loadingMore, loadMore, topUp, topUpSessionPayload, completeTopUp, cancelTopUp, topUpProcessing } = useWallet();
+  const {
+    wallet,
+    refreshWallet,
+    reloadWallet,
+    hasMore,
+    loadingMore,
+    loadMore,
+    topUp,
+    topUpSessionPayload,
+    pendingTopUpOrderId,
+    completeTopUp,
+    cancelTopUp,
+    topUpProcessing,
+  } = useWallet();
 
   // Re-fetch every time the screen is shown so status changes made elsewhere
   // (admin, rider, another device) appear without restarting the app.
@@ -48,6 +62,60 @@ export default function WalletScreen() {
   );
 
   const [amount, setAmount] = useState<number>(TOPUP_PRESETS[0]);
+  const [gatewayWatching, setGatewayWatching] = useState(false);
+  const settlingRef = useRef(false);
+  const watchAbortRef = useRef({ aborted: false });
+  const gatewayProgressSeenRef = useRef(false);
+
+  useEffect(() => {
+    if (!topUpSessionPayload) {
+      setGatewayWatching(false);
+      watchAbortRef.current.aborted = true;
+      settlingRef.current = false;
+      gatewayProgressSeenRef.current = false;
+    }
+  }, [topUpSessionPayload]);
+
+  useEffect(() => {
+    if (!topUpSessionPayload || !gatewayWatching || !pendingTopUpOrderId) return undefined;
+    const signal = { aborted: false };
+    watchAbortRef.current = signal;
+    void (async () => {
+      while (!signal.aborted) {
+        const { outcome } = await watchWorldlineStatus({
+          orderId: pendingTopUpOrderId,
+          initialDelayMs: 1200,
+          intervalMs: 2500,
+          maxAttempts: 40,
+          signal,
+        });
+        if (signal.aborted || settlingRef.current) return;
+        // Pending stays on the WebView. Blank-page recovery calls onComplete.
+        if (outcome === 'paid' || outcome === 'failed') {
+          settlingRef.current = true;
+          try {
+            await completeTopUp('');
+          } finally {
+            settlingRef.current = false;
+            setGatewayWatching(false);
+          }
+          return;
+        }
+      }
+    })();
+    return () => {
+      signal.aborted = true;
+    };
+  }, [topUpSessionPayload, gatewayWatching, pendingTopUpOrderId, completeTopUp]);
+
+  useEffect(() => {
+    if (!topUpSessionPayload) return undefined;
+    const sub = AppState.addEventListener('change', state => {
+      if (state !== 'active' || settlingRef.current || !gatewayProgressSeenRef.current) return;
+      setGatewayWatching(true);
+    });
+    return () => sub.remove();
+  }, [topUpSessionPayload]);
   const [customOpen, setCustomOpen] = useState(false);
   const [customVal, setCustomVal] = useState('');
   const [refreshing, setRefreshing] = useState(false);
@@ -264,9 +332,30 @@ export default function WalletScreen() {
           sessionPayload={topUpSessionPayload}
           cancelTestID="wallet-cancel"
           onComplete={async ({ url, response }) => {
-            if (!topUpProcessing) await completeTopUp(response ?? url);
+            if (settlingRef.current || topUpProcessing) return;
+            settlingRef.current = true;
+            watchAbortRef.current.aborted = true;
+            try {
+              await completeTopUp(response ?? url);
+            } finally {
+              settlingRef.current = false;
+              setGatewayWatching(false);
+            }
           }}
-          onCancel={cancelTopUp}
+          onCancel={async info => {
+            watchAbortRef.current.aborted = true;
+            settlingRef.current = true;
+            try {
+              await cancelTopUp(info);
+            } finally {
+              settlingRef.current = false;
+              setGatewayWatching(false);
+            }
+          }}
+          onGatewayProgress={() => {
+            gatewayProgressSeenRef.current = true;
+            setGatewayWatching(true);
+          }}
         />
       ) : null}
       </View>

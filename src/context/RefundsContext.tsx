@@ -14,8 +14,12 @@ export interface Refund {
   id: string;
   orderNumber: string;
   amount: number;
-  status: 'pending' | 'processed' | 'rejected';
+  status: 'pending' | 'processing' | 'processed' | 'rejected';
   method: string;
+  destination: string;
+  transactionId: string;
+  needsBankAccount: boolean;
+  bankAccountLast4: string;
   reasonText: string;
   ts: string;
 }

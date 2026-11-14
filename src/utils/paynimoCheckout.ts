@@ -83,6 +83,26 @@ export function buildPaynimoCheckoutHtml(
           }
         } catch (e) {}
       }
+      // Paynimo registers beforeunload and sets event.returnValue. Android WebView
+      // then shows "Confirm Navigation" and never loads the bank page. Ignore that
+      // handler before checkout.js runs. The bank document is a new page and keeps
+      // its own leave warning.
+      if (typeof EventTarget !== 'undefined' && EventTarget.prototype && !EventTarget.prototype.__selorgUnload) {
+        var nativeAddEventListener = EventTarget.prototype.addEventListener;
+        EventTarget.prototype.addEventListener = function (type, listener, options) {
+          if (String(type).toLowerCase() === 'beforeunload') return;
+          return nativeAddEventListener.call(this, type, listener, options);
+        };
+        EventTarget.prototype.__selorgUnload = true;
+      }
+      try {
+        Object.defineProperty(window, 'onbeforeunload', {
+          configurable: true,
+          enumerable: true,
+          get: function () { return null; },
+          set: function () {}
+        });
+      } catch (e) {}
       function showErr(msg) {
         var el = document.getElementById('err');
         if (el) el.textContent = msg || 'Could not open payment gateway';
@@ -132,6 +152,157 @@ export function buildPaynimoCheckoutHtml(
       payload.features.enableNewWindowFlow = true;
       payload.features.enableTopWindowRedirection = false;
       payload.features.singleBankForceRedirect = false;
+      // Paynimo opens window.open(''), writes a waiting page, then does one of:
+      // bankWindow.location.assign/replace/href = httpsUrl (card gateway GET), or
+      // append <form id="bankFrmSubmit" method="post"> and form.submit().
+      // location.assign on an HTML-sourced WebView does not commit that GET, and
+      // doing it in the same turn drops the bridge message. The GET is handed to
+      // the native WebView once. The bank form is still submitted in this page.
+      function diag(detail) {
+        notify('diag', detail || {});
+      }
+      function pathOnly(value) {
+        var raw = String(value || '');
+        return raw.split('#')[0].split('?')[0].slice(0, 180);
+      }
+      if (!window.__selorgCardSubmit) {
+        window.__selorgCardSubmit = true;
+        var nativeSubmit = HTMLFormElement.prototype.submit;
+        HTMLFormElement.prototype.submit = function () {
+          var id = this.id || '';
+          var method = String(this.method || 'GET').toUpperCase();
+          var target = this.target || '';
+          if (id === 'bankFrmSubmit') {
+            if (this.getAttribute('data-selorg-posted') === '1') {
+              diag({ event: 'form-submit-skipped', formId: id, reason: 'already-submitted' });
+              return;
+            }
+            this.setAttribute('data-selorg-posted', '1');
+            this.target = '_self';
+            target = '_self';
+          }
+          diag({
+            event: 'form-submit',
+            formId: id || '(none)',
+            method: method,
+            target: target || '(default)',
+            action: pathOnly(this.action),
+            webView: 'visible'
+          });
+          return nativeSubmit.call(this);
+        };
+      }
+      function showInThisPage(next) {
+        if (next) window.location.assign(next);
+      }
+      function holdBankForm(html) {
+        var text = String(html || '');
+        if (text.indexOf('bankFrmSubmit') < 0) {
+          diag({ event: 'popup-write', hasBankForm: false, bytes: text.length });
+          return;
+        }
+        if (document.getElementById('bankFrmSubmit')) {
+          diag({ event: 'popup-write-skipped', formId: 'bankFrmSubmit', reason: 'already-in-document' });
+          return;
+        }
+        var holder = document.createElement('div');
+        holder.innerHTML = text;
+        document.body.appendChild(holder);
+        diag({ event: 'popup-write-form', formId: 'bankFrmSubmit', webView: 'visible' });
+      }
+      function attachPopupNode(node) {
+        if (!node || !node.nodeType) return node;
+        document.body.appendChild(node);
+        var form = node.id === 'bankFrmSubmit' ? node : (node.querySelector ? node.querySelector('#bankFrmSubmit') : null);
+        diag({
+          event: 'popup-append',
+          formId: form && form.id ? form.id : '(none)',
+          method: form && form.method ? String(form.method).toUpperCase() : '',
+          target: form && form.target ? form.target : '',
+          action: form ? pathOnly(form.action) : '',
+          webView: 'visible'
+        });
+        return node;
+      }
+      window.open = function (url) {
+        var href = typeof url === 'string' ? url : '';
+        diag({ event: 'window-open', url: href ? pathOnly(href) : '(blank)', webView: 'visible' });
+        if (href && href !== 'about:blank' && !/^https?:/i.test(href)) {
+          showInThisPage(href);
+          return null;
+        }
+        if (href.slice(0, 8).toLowerCase() === 'https://') {
+          notify('follow-get', { url: href });
+          return window;
+        }
+        if (href.slice(0, 7).toLowerCase() === 'http://') {
+          showInThisPage(href);
+          return window;
+        }
+        var popup = {
+          closed: false,
+          name: '',
+          focus: function () {},
+          close: function () {
+            popup.closed = true;
+            diag({ event: 'popup-close' });
+          },
+          postMessage: function () { diag({ event: 'popup-post-message' }); },
+          document: {
+            open: function () {},
+            close: function () {},
+            write: holdBankForm,
+            writeln: function (html) { holdBankForm(html); },
+            createElement: function (tag) { return document.createElement(tag); },
+            getElementById: function (id) { return document.getElementById(id); },
+            body: { append: attachPopupNode, appendChild: attachPopupNode }
+          }
+        };
+        function hostOf(value) {
+          var raw = String(value || '');
+          if (raw.slice(0, 8).toLowerCase() !== 'https://') return '';
+          return raw.slice(8).split('/')[0].split('?')[0].split('#')[0].split(':')[0].toLowerCase();
+        }
+        function noteLocation(next) {
+          var href = typeof next === 'string' ? next : '';
+          var host = hostOf(href);
+          var checkoutHost = host === 'paynimo.com' || host.slice(-13) === '.paynimo.com';
+          // Card GET only. A paynimo.com URL is still the checkout. A second GET
+          // is ignored. bankFrmSubmit remains a POST in this page.
+          var follow = !!host && !checkoutHost && !popup.__selorgFollowed;
+          if (follow) popup.__selorgFollowed = true;
+          diag({
+            event: 'popup-location',
+            url: pathOnly(href),
+            method: 'GET',
+            hasQuery: href.indexOf('?') >= 0,
+            followed: follow,
+            webView: 'visible'
+          });
+          if (follow) notify('follow-get', { url: href });
+        }
+        function hrefCall(next) { noteLocation(next); }
+        var locationHooks = { assign: noteLocation, replace: noteLocation };
+        try {
+          Object.defineProperty(locationHooks, 'href', {
+            configurable: true,
+            get: function () { return hrefCall; },
+            set: noteLocation
+          });
+        } catch (e) {
+          locationHooks.href = hrefCall;
+        }
+        try {
+          Object.defineProperty(popup, 'location', {
+            configurable: true,
+            get: function () { return locationHooks; },
+            set: function (value) { if (typeof value === 'string') noteLocation(value); }
+          });
+        } catch (e) {
+          popup.location = locationHooks;
+        }
+        return popup;
+      };
       payload.consumerData.responseHandler = function (res) {
         var txn = res && res.paymentMethod && res.paymentMethod.paymentTransaction;
         var code = txn && txn.statusCode;

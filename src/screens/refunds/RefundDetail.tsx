@@ -1,11 +1,14 @@
-import React from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import React, { useState } from 'react';
+import { ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { colors, fontFamily, radii, shadows } from '../../theme';
-import { ScreenContainer, Header, Icon, StateView } from '../../components';
+import { ScreenContainer, Header, Icon, PrimaryButton, StateView } from '../../components';
 import { useRefunds } from '../../context/RefundsContext';
+import { refundsApi } from '../../services/refunds.service';
 import { formatCurrency } from '../../utils/format';
+import { showToast } from '../../utils/toast';
+import { getErrorMessage } from '../../utils/apiError';
 import { RootStackParamList } from '../../navigation/types';
 
 const STEPS: { key: 'pending' | 'processing' | 'done'; title: string; desc: string }[] = [
@@ -17,7 +20,12 @@ const STEPS: { key: 'pending' | 'processing' | 'done'; title: string; desc: stri
 export default function RefundDetail() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const route = useRoute<RouteProp<RootStackParamList, 'RefundDetail'>>();
-  const { refunds } = useRefunds();
+  const { refunds, refresh } = useRefunds();
+  const [holder, setHolder] = useState('');
+  const [account, setAccount] = useState('');
+  const [ifsc, setIfsc] = useState('');
+  const [bankName, setBankName] = useState('');
+  const [saving, setSaving] = useState(false);
 
   const refund = refunds.find(r => r.id === route.params?.refundId);
 
@@ -38,8 +46,26 @@ export default function RefundDetail() {
   }
 
   const rejected = refund.status === 'rejected';
-  // pending -> step 0 done; processed -> all steps done; rejected -> stop after first step
-  const curIdx = rejected ? 0 : refund.status === 'processed' ? 2 : 0;
+  const curIdx = rejected ? 0 : refund.status === 'processed' ? 2 : refund.status === 'processing' ? 1 : 0;
+
+  const submitAccount = async () => {
+    if (saving) return;
+    setSaving(true);
+    try {
+      await refundsApi.submitBankAccount(refund.id, {
+        accountHolder: holder.trim(),
+        accountNumber: account.trim(),
+        ifsc: ifsc.trim().toUpperCase(),
+        bankName: bankName.trim(),
+      });
+      showToast('Bank account sent to support for verification');
+      await refresh();
+    } catch (err) {
+      showToast(getErrorMessage(err, 'Could not save the bank account'));
+    } finally {
+      setSaving(false);
+    }
+  };
   const date = new Date(refund.ts).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
 
   return (
@@ -51,7 +77,7 @@ export default function RefundDetail() {
           <Text style={styles.eyebrow}>REFUND AMOUNT</Text>
           <Text style={styles.amount}>{formatCurrency(refund.amount)}</Text>
           <Text style={styles.method}>
-            To {refund.method === 'wallet' ? 'Selorg Wallet' : 'original payment method'}
+            To {refund.destination || (refund.method === 'wallet' ? 'Selorg Wallet' : 'original payment method')}
           </Text>
         </View>
 
@@ -68,7 +94,25 @@ export default function RefundDetail() {
             <Text style={styles.detailLabel}>Requested on</Text>
             <Text style={styles.detailValue}>{date}</Text>
           </View>
+          {refund.transactionId ? (
+            <View style={styles.detailRow}>
+              <Text style={styles.detailLabel}>Transaction ID</Text>
+              <Text style={styles.detailValue}>{refund.transactionId}</Text>
+            </View>
+          ) : null}
         </View>
+
+        {refund.needsBankAccount ? (
+          <View style={styles.card}>
+            <Text style={styles.stepTitle}>Bank account for the refund</Text>
+            <Text style={styles.stepDesc}>The original payment could not be refunded. Support verifies this account before sending the money.</Text>
+            <TextInput value={holder} onChangeText={setHolder} placeholder="Account holder" style={styles.input} />
+            <TextInput value={account} onChangeText={setAccount} placeholder="Account number" keyboardType="number-pad" style={styles.input} />
+            <TextInput value={ifsc} onChangeText={value => setIfsc(value.toUpperCase())} placeholder="IFSC" autoCapitalize="characters" style={styles.input} />
+            <TextInput value={bankName} onChangeText={setBankName} placeholder="Bank name" style={styles.input} />
+            <PrimaryButton label={saving ? 'Saving…' : 'Send account to support'} onPress={submitAccount} disabled={saving} />
+          </View>
+        ) : null}
 
         {rejected ? (
           <View style={styles.rejectedCard}>
@@ -146,4 +190,14 @@ const styles = StyleSheet.create({
   line: { width: 2, flex: 1, minHeight: 18 },
   stepTitle: { fontFamily: fontFamily.bold, fontSize: 14 },
   stepDesc: { fontFamily: fontFamily.medium, fontSize: 12, color: colors.textMuted, marginTop: 2 },
+  input: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radii.md,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginTop: 10,
+    fontFamily: fontFamily.medium,
+    color: colors.text,
+  },
 });

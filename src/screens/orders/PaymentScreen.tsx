@@ -1,16 +1,20 @@
-import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { ActivityIndicator, AppState, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useFocusEffect, useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import BillSummaryCard from '../../components/BillSummaryCard';
-import WorldlineCheckoutWebView, { type GatewayCloseInfo } from '../../components/WorldlineCheckoutWebView';
+import WorldlineCheckoutWebView, {
+  type GatewayCloseInfo,
+  type GatewayProgressInfo,
+} from '../../components/WorldlineCheckoutWebView';
 import { Header, Icon, PrimaryButton, ScreenContainer, StateView } from '../../components';
 import type { IconName } from '../../components';
 import { colors, fontFamily, radii } from '../../theme';
 import { formatCurrency } from '../../utils/format';
 import { showToast } from '../../utils/toast';
 import { parseReturnUrl } from '../../utils/worldline';
-import { onlineFailureBlocksMethod, resolvePayMethod } from '../../utils/paymentAttempt';
+import { watchWorldlineStatus } from '../../utils/worldlineStatusWatch';
+import { onlineInterruptsMethod, resolvePayMethod } from '../../utils/paymentAttempt';
 import { useCart } from '../../context/CartContext';
 import { useOrders } from '../../context/OrdersContext';
 import type { PayMethod } from '../../context/OrdersContext';
@@ -35,6 +39,7 @@ export default function PaymentScreen() {
     placeOrder,
     payExistingOrder,
     retryPayment,
+    prepareFreshPaymentSession,
     gatewaySessionPayload,
     pendingGatewayOrderId,
     completeGatewayPayment,
@@ -45,33 +50,251 @@ export default function PaymentScreen() {
   const route = useRoute<RouteProp<RootStackParamList, 'Payment'>>();
   // Honour the method picked on Checkout, defaulting to online.
   const [method, setMethod] = useState<PayMethod>(route.params?.method ?? 'online');
+  const [unconfirmed, setUnconfirmed] = useState('');
+  /** True while Worldline has not confirmed capture or decline — not a failure. */
+  const [paymentPending, setPaymentPending] = useState(false);
+  const [pendingVerifyOrderId, setPendingVerifyOrderId] = useState<string | null>(null);
+  const [gatewayWatching, setGatewayWatching] = useState(false);
+  const settlingRef = useRef(false);
+  const watchAbortRef = useRef({ aborted: false });
+  /** True only after the card/bank page (or blank recovery) — never poll on the Paynimo picker alone. */
+  const gatewayProgressSeenRef = useRef(false);
+  const payStateRef = useRef(payState);
+  payStateRef.current = payState;
+  const pendingGatewayOrderIdRef = useRef(pendingGatewayOrderId);
+  pendingGatewayOrderIdRef.current = pendingGatewayOrderId;
 
   // Checkout can change the method and navigate back onto this screen.
   useEffect(() => {
     if (route.params?.method) setMethod(route.params.method);
   }, [route.params?.method]);
 
+  // Hold latest fns in refs so this focus callback stays stable. Depending on
+  // `wallet` / `reloadWallet` re-fired prepareFresh after every balance fetch and
+  // cleared the Paynimo session — Choose Payment Method appeared to reload forever.
+  const prepareFreshRef = useRef(prepareFreshPaymentSession);
+  prepareFreshRef.current = prepareFreshPaymentSession;
+  const reloadWalletRef = useRef(wallet.reloadWallet);
+  reloadWalletRef.current = wallet.reloadWallet;
+  const resumeOrderId = route.params?.orderId;
+
   useFocusEffect(
     React.useCallback(() => {
-      void wallet.reloadWallet();
-    }, [wallet.reloadWallet]),
+      prepareFreshRef.current({
+        resumeOrderId,
+      });
+      setUnconfirmed('');
+      // Do not clear paymentPending on focus — a bank debit may still be reconciling.
+      // Resuming the app (SMS OTP, lock screen) re-fires this effect. Aborting the
+      // status watch here left a captured payment on the blank Secure Payment sheet.
+      if (payStateRef.current === 'awaiting_gateway') {
+        if (gatewayProgressSeenRef.current && pendingGatewayOrderIdRef.current) {
+          setGatewayWatching(true);
+        }
+        void reloadWalletRef.current();
+        return;
+      }
+      watchAbortRef.current.aborted = true;
+      setGatewayWatching(false);
+      gatewayProgressSeenRef.current = false;
+      settlingRef.current = false;
+      void reloadWalletRef.current();
+    }, [resumeOrderId]),
   );
 
-  // A failed UPI attempt must not stay on screen after the shopper picks COD or wallet.
+  // Once the order exists, Cart/Checkout/Payment must not stay on the stack:
+  // backing out of the confirmation (or of Tracking, which replaces it) should
+  // land on Main, never back inside a checkout the user already completed.
+  const goToOrderPlaced = React.useCallback(
+    (orderId: string) => {
+      navigation.reset({
+        index: 1,
+        routes: [{ name: 'Main' }, { name: 'OrderPlaced', params: { orderId } }],
+      });
+    },
+    [navigation],
+  );
+
+  const settleFromStatusWatch = React.useCallback(
+    async (orderId: string) => {
+      if (settlingRef.current) return;
+      settlingRef.current = true;
+      watchAbortRef.current.aborted = true;
+      try {
+        const result = await completeGatewayPayment(orderId, '');
+        if (result.success && result.order) {
+          setUnconfirmed('');
+          setPaymentPending(false);
+          setPendingVerifyOrderId(null);
+          goToOrderPlaced(result.order.id);
+          void wallet.reloadWallet();
+          return;
+        }
+        if (result.pendingVerification) {
+          setPaymentPending(true);
+          setPendingVerifyOrderId(orderId);
+          setUnconfirmed('');
+          return;
+        }
+        setPaymentPending(false);
+        setPendingVerifyOrderId(null);
+        setUnconfirmed(result.message || 'Payment was not completed. You can retry from checkout.');
+      } finally {
+        settlingRef.current = false;
+        setGatewayWatching(false);
+      }
+    },
+    [completeGatewayPayment, goToOrderPlaced, wallet],
+  );
+
+  // While Secure Payment is open after the card/bank page, poll server status.
+  // The bank may already have captured while the WebView stays white.
+  useEffect(() => {
+    if (payState !== 'awaiting_gateway' || !gatewayWatching) return undefined;
+    // Never fall back to activeOrder — that is often the previous finished order.
+    const orderId = pendingGatewayOrderId;
+    if (!orderId) return undefined;
+    const signal = { aborted: false };
+    watchAbortRef.current = signal;
+    void (async () => {
+      while (!signal.aborted) {
+        const { outcome } = await watchWorldlineStatus({
+          orderId,
+          initialDelayMs: 1200,
+          intervalMs: 2500,
+          maxAttempts: 40,
+          signal,
+        });
+        if (signal.aborted) return;
+        // Only a verified capture or decline closes the WebView from this loop.
+        // Pending, timeout, and a blank document are not a failure — blank-page
+        // recovery calls onComplete, which shows Payment processing and keeps polling.
+        if (outcome === 'paid' || outcome === 'failed') {
+          await settleFromStatusWatch(orderId);
+          return;
+        }
+      }
+    })();
+    return () => {
+      signal.aborted = true;
+    };
+  }, [payState, gatewayWatching, pendingGatewayOrderId, settleFromStatusWatch]);
+
+  // Keep reconciling after the WebView closes if the bank debit is still verifying.
+  useEffect(() => {
+    if (!paymentPending || method !== 'online') return undefined;
+    const orderId = pendingVerifyOrderId || pendingGatewayOrderId || route.params?.orderId;
+    if (!orderId) return undefined;
+    const signal = { aborted: false };
+    void (async () => {
+      while (!signal.aborted) {
+        const { outcome } = await watchWorldlineStatus({
+          orderId,
+          initialDelayMs: 2000,
+          intervalMs: 4000,
+          maxAttempts: 20,
+          signal,
+        });
+        if (signal.aborted) return;
+        await settleFromStatusWatch(orderId);
+        if (outcome === 'paid' || outcome === 'failed') return;
+        // Still pending — Worldline inquiry may confirm on the next pass.
+      }
+    })();
+    return () => {
+      signal.aborted = true;
+    };
+  }, [
+    paymentPending,
+    method,
+    pendingVerifyOrderId,
+    pendingGatewayOrderId,
+    route.params?.orderId,
+    settleFromStatusWatch,
+  ]);
+
+  // Resume / reopen: continue status watch after OTP / app switch, only once
+  // the card or bank page has already been reached.
+  useEffect(() => {
+    if (payState !== 'awaiting_gateway') return undefined;
+    const sub = AppState.addEventListener('change', state => {
+      if (state !== 'active') return;
+      if (!pendingGatewayOrderId || settlingRef.current || !gatewayProgressSeenRef.current) return;
+      setGatewayWatching(true);
+    });
+    return () => sub.remove();
+  }, [payState, pendingGatewayOrderId]);
+
+  useEffect(() => {
+    if (payState !== 'awaiting_gateway') {
+      setGatewayWatching(false);
+      watchAbortRef.current.aborted = true;
+      settlingRef.current = false;
+      gatewayProgressSeenRef.current = false;
+    }
+  }, [payState]);
+
+  // A failed / unconfirmed online attempt must not stay on screen after COD or wallet.
   useEffect(() => {
     if (method === 'online') return;
+    if (unconfirmed) setUnconfirmed('');
     if (failedMethod === 'online' && (payState === 'failed' || payState === 'error')) {
       retryPayment();
     }
-  }, [method, failedMethod, payState, retryPayment]);
+  }, [method, failedMethod, payState, retryPayment, unconfirmed]);
 
   const walletCovers = wallet.covers(grandTotal);
+
+  const leaveGatewayForOtherMethod = async () => {
+    watchAbortRef.current.aborted = true;
+    setGatewayWatching(false);
+    settlingRef.current = false;
+    setUnconfirmed('');
+    if (payState === 'awaiting_gateway' || gatewaySessionPayload) {
+      // Drop WebView / session UI. Do not force-abort mid-OTP here — placeOrder
+      // aborts+cancels only when status is safe to clear, or blocks if verifying.
+      await cancelGatewayPayment({
+        bankAuthenticationStarted: gatewayProgressSeenRef.current,
+      });
+    } else {
+      retryPayment();
+    }
+  };
+
+  const selectMethod = (next: PayMethod) => {
+    if (next === method) return;
+    setMethod(next);
+    if (next !== 'online') {
+      setUnconfirmed('');
+      watchAbortRef.current.aborted = true;
+      setGatewayWatching(false);
+      if (payState === 'awaiting_gateway' || gatewaySessionPayload) {
+        void leaveGatewayForOtherMethod();
+      }
+    }
+  };
 
   const handlePay = async (nextMethod?: PayMethod) => {
     // A press event must not become the method. Only online | cod | wallet count.
     const paying = resolvePayMethod(nextMethod, method);
     if (paying !== method) setMethod(paying);
-    if (payState === 'processing' || payState === 'awaiting_gateway') return;
+
+    if (paying !== 'online') {
+      // COD / wallet must not reopen Worldline or keep the card failure sheet.
+      setUnconfirmed('');
+      watchAbortRef.current.aborted = true;
+      setGatewayWatching(false);
+      gatewayProgressSeenRef.current = false;
+      if (payState === 'awaiting_gateway' || gatewaySessionPayload) {
+        await leaveGatewayForOtherMethod();
+      }
+    }
+
+    if (payState === 'processing') return;
+    // After leaveGatewayForOtherMethod, awaiting_gateway is cleared. Do not block COD
+    // on a stale awaiting flag from before the switch.
+    if (paying === 'online' && payState === 'awaiting_gateway') return;
+
     if (paying === 'wallet') {
       const balance = await wallet.reloadWallet();
       if (balance == null) {
@@ -88,57 +311,74 @@ export default function PaymentScreen() {
       ? await payExistingOrder(resumeOrderId)
       : await placeOrder(paying, route.params?.receiver);
     if (result.success && result.order && !result.needsGateway) {
-      await wallet.reloadWallet();
+      setUnconfirmed('');
       goToOrderPlaced(result.order.id);
+      void wallet.reloadWallet();
+      return;
     }
-  };
-
-  // Once the order exists, Cart/Checkout/Payment must not stay on the stack:
-  // backing out of the confirmation (or of Tracking, which replaces it) should
-  // land on Main, never back inside a checkout the user already completed.
-  const goToOrderPlaced = (orderId: string) => {
-    navigation.reset({
-      index: 1,
-      routes: [{ name: 'Main' }, { name: 'OrderPlaced', params: { orderId } }],
-    });
+    if (!result.success && paying !== 'online' && result.message) {
+      showToast(result.message, result.pendingVerification ? 'info' : 'err');
+    }
   };
 
   const applyDismiss = async (info: GatewayCloseInfo | undefined, leave: boolean) => {
+    watchAbortRef.current.aborted = true;
+    settlingRef.current = true;
     const orderId = pendingGatewayOrderId || activeOrder?.id;
-    const action = await cancelGatewayPayment({
-      bankAuthenticationStarted: !!info?.bankAuthenticationStarted,
-    });
-    if (action === 'finish_paid' && orderId) {
-      const result = await completeGatewayPayment(orderId, '');
-      if (result.success && result.order) {
-        await wallet.reloadWallet();
-        goToOrderPlaced(result.order.id);
+    try {
+      const action = await cancelGatewayPayment({
+        bankAuthenticationStarted: !!info?.bankAuthenticationStarted,
+      });
+      if (action === 'finish_paid' && orderId) {
+        const result = await completeGatewayPayment(orderId, '');
+        if (result.success && result.order) {
+          await wallet.reloadWallet();
+          goToOrderPlaced(result.order.id);
+          return;
+        }
+      }
+      if (action === 'hold' || action === 'finish_paid') {
+        setUnconfirmed('');
+        showToast('Payment is still being verified. Check Orders before paying again.', 'info');
+        if (leave) navigation.navigate('Checkout');
         return;
       }
-    }
-    if (action === 'hold' || action === 'finish_paid') {
-      showToast('Payment is still being verified. Check Orders before paying again.', 'info');
-      if (leave) navigation.navigate('Checkout');
-      return;
-    }
-    if (action === 'close_failed') {
-      if (leave) {
-        showToast('Payment was not completed. You can retry from checkout.', 'err');
-        navigation.navigate('Checkout');
+      if (action === 'close_failed') {
+        setUnconfirmed('');
+        if (leave) {
+          showToast('Payment was not completed. You can retry from checkout.', 'err');
+          navigation.navigate('Checkout');
+        }
+        return;
       }
-      return;
+      setUnconfirmed('');
+      showToast('Payment cancelled. No amount has been charged.', 'info');
+      if (leave) navigation.navigate('Checkout');
+    } finally {
+      settlingRef.current = false;
+      setGatewayWatching(false);
     }
-    showToast('Payment cancelled. No amount has been charged.', 'info');
-    if (leave) navigation.navigate('Checkout');
   };
 
-  // Back to the method picker. Status is checked before any abort.
+  // Back to the method picker. Clear card/WebView UI first.
   const resetToMethodPicker = () => {
-    applyDismiss({ bankAuthenticationStarted: false }, false).catch(() => {});
+    setUnconfirmed('');
+    watchAbortRef.current.aborted = true;
+    setGatewayWatching(false);
+    if (payState === 'awaiting_gateway' || gatewaySessionPayload) {
+      applyDismiss({ bankAuthenticationStarted: gatewayProgressSeenRef.current }, false).catch(() => {});
+    } else {
+      retryPayment();
+    }
   };
 
   const leaveCancelledPayment = (info: GatewayCloseInfo) => {
     applyDismiss(info, true).catch(() => {});
+  };
+
+  const handleGatewayProgress = (_info: GatewayProgressInfo) => {
+    gatewayProgressSeenRef.current = true;
+    if (payState === 'awaiting_gateway') setGatewayWatching(true);
   };
 
   const handleGatewayComplete = async ({
@@ -148,29 +388,44 @@ export default function PaymentScreen() {
     url: string;
     response?: Record<string, unknown>;
   }) => {
+    if (settlingRef.current) return;
+    settlingRef.current = true;
+    watchAbortRef.current.aborted = true;
     const orderId = pendingGatewayOrderId || activeOrder?.id;
-    if (!orderId) {
-      showToast('We could not confirm this payment. Check Orders before paying again.', 'err');
-      navigation.navigate('Checkout');
-      return;
-    }
-    const result = await completeGatewayPayment(orderId, response ?? url);
-    if (result.success && result.order) {
-      await wallet.reloadWallet();
-      goToOrderPlaced(result.order.id);
-      return;
-    }
-    if (result.pendingVerification) {
-      showToast(result.message || 'Payment is still being verified. Check Orders before paying again.', 'info');
-      navigation.navigate('Checkout');
-      return;
-    }
-    const status = String(
-      (response?.status as string | undefined) || parseReturnUrl(url).status || '',
-    ).toLowerCase();
-    if (status === 'cancelled' || status === 'canceled' || status === 'cancel') {
-      showToast('Payment cancelled. No amount has been charged.', 'info');
-      navigation.navigate('Checkout');
+    try {
+      if (!orderId) {
+        showToast('We could not confirm this payment. Check Orders before paying again.', 'err');
+        navigation.navigate('Checkout');
+        return;
+      }
+      const result = await completeGatewayPayment(orderId, response ?? url);
+      if (result.success && result.order) {
+        setUnconfirmed('');
+        setPaymentPending(false);
+        setPendingVerifyOrderId(null);
+        goToOrderPlaced(result.order.id);
+        void wallet.reloadWallet();
+        return;
+      }
+      if (result.pendingVerification) {
+        setPaymentPending(true);
+        setPendingVerifyOrderId(orderId);
+        setUnconfirmed('');
+        return;
+      }
+      const status = String(
+        (response?.status as string | undefined) || parseReturnUrl(url).status || '',
+      ).toLowerCase();
+      if (status === 'cancelled' || status === 'canceled' || status === 'cancel') {
+        showToast('Payment cancelled. No amount has been charged.', 'info');
+        navigation.navigate('Checkout');
+        return;
+      }
+      setPaymentPending(false);
+      setUnconfirmed(result.message || 'Payment was not completed. You can retry from checkout.');
+    } finally {
+      settlingRef.current = false;
+      setGatewayWatching(false);
     }
   };
 
@@ -186,7 +441,35 @@ export default function PaymentScreen() {
     );
   }
 
-  if (onlineFailureBlocksMethod(payState, failedMethod, method)) {
+  if (paymentPending && method === 'online') {
+    return (
+      <ScreenContainer background={colors.white}>
+        <Header title="Payment" onBack={() => navigation.goBack()} />
+        <View style={styles.retryStateWrap}>
+          <StateView
+            kind="empty"
+            title="Payment processing"
+            message="We're confirming your payment with the bank. Do not pay again — this screen updates when the charge is verified."
+            icon="card"
+          />
+        </View>
+        <View style={styles.retryWrap}>
+          <PrimaryButton
+            label="Check payment status"
+            onPress={() => {
+              const orderId = pendingVerifyOrderId || pendingGatewayOrderId || route.params?.orderId;
+              if (orderId) void settleFromStatusWatch(orderId);
+            }}
+          />
+          <Text style={styles.retryNote}>
+            If money was debited, keep this order — do not start another payment.
+          </Text>
+        </View>
+      </ScreenContainer>
+    );
+  }
+
+  if (onlineInterruptsMethod(payState, failedMethod, method, unconfirmed)) {
     return (
       <ScreenContainer background={colors.white}>
         <Header title="Payment" onBack={() => navigation.goBack()} />
@@ -194,12 +477,19 @@ export default function PaymentScreen() {
           <StateView
             kind="error"
             title="Payment failed"
-            message={payError || 'Something went wrong. Your order was not charged.'}
+            message={unconfirmed || payError || 'Something went wrong. Your order was not charged.'}
             icon="card"
           />
         </View>
         <View style={styles.retryWrap}>
-          <PrimaryButton label="Retry payment" onPress={retryPayment} />
+          <PrimaryButton
+            label="Retry payment"
+            onPress={() => {
+              setUnconfirmed('');
+              setPaymentPending(false);
+              retryPayment();
+            }}
+          />
           <PrimaryButton
             label="Pay cash on delivery"
             kind="ghost"
@@ -216,7 +506,19 @@ export default function PaymentScreen() {
 
   return (
     <ScreenContainer>
-      <Header title="Payment" subtitle={`To pay ${formatCurrency(grandTotal)}`} onBack={() => navigation.goBack()} />
+      <Header
+        title="Payment"
+        subtitle={`To pay ${formatCurrency(grandTotal)}`}
+        onBack={() => {
+          // Leaving Payment must drop any open gateway UI so the next visit
+          // does not immediately re-open Worldline.
+          if (payState === 'awaiting_gateway' || gatewaySessionPayload) {
+            void leaveGatewayForOtherMethod().finally(() => navigation.goBack());
+            return;
+          }
+          navigation.goBack();
+        }}
+      />
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         <Text style={styles.sectionLabel}>CHOOSE PAYMENT METHOD</Text>
         {METHODS.map(m => {
@@ -234,7 +536,7 @@ export default function PaymentScreen() {
             <Pressable
               key={m.id}
               style={[styles.methodCard, active && styles.methodCardActive]}
-              onPress={() => setMethod(m.id)}
+              onPress={() => selectMethod(m.id)}
               testID={`payment-method-${m.id}`}
               accessibilityRole="button"
               accessibilityLabel={m.title}
@@ -288,13 +590,14 @@ export default function PaymentScreen() {
         />
       </View>
 
-      {gatewaySessionPayload && payState === 'awaiting_gateway' ? (
+      {gatewaySessionPayload && payState === 'awaiting_gateway' && !unconfirmed ? (
         <WorldlineCheckoutWebView
           visible
           openAllPaymentModes
           sessionPayload={gatewaySessionPayload}
           onComplete={handleGatewayComplete}
           onCancel={leaveCancelledPayment}
+          onGatewayProgress={handleGatewayProgress}
         />
       ) : null}
     </ScreenContainer>

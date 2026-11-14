@@ -485,7 +485,13 @@ export const CartProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     if (isAuthenticated()) refreshCart();
   }, [refreshCart]);
 
-  const setTip = useCallback((v: number) => setTipState(v), []);
+  const setTip = useCallback((v: number) => {
+    if (!Number.isFinite(v) || v <= 0) {
+      setTipState(0);
+      return;
+    }
+    setTipState(Math.min(500, Math.round(v)));
+  }, []);
 
   const clearCart = useCallback(async () => {
     setCoupon(null);

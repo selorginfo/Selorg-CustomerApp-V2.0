@@ -9,6 +9,10 @@ export interface ApiRefund {
   reason?: string;
   reasonText?: string;
   method?: string;
+  destination?: string;
+  transactionId?: string;
+  needsBankAccount?: boolean;
+  bankAccountLast4?: string;
   date?: string;
   createdAt?: string;
   updatedAt?: string;
@@ -18,15 +22,20 @@ export interface RefundView {
   id: string;
   orderNumber: string;
   amount: number;
-  status: 'pending' | 'processed' | 'rejected';
+  status: 'pending' | 'processing' | 'processed' | 'rejected';
   method: string;
+  destination: string;
+  transactionId: string;
+  needsBankAccount: boolean;
+  bankAccountLast4: string;
   reasonText: string;
   ts: string;
 }
 
 const STATUS_MAP: Record<string, RefundView['status']> = {
   pending: 'pending',
-  approved: 'pending',
+  approved: 'processing',
+  processing: 'processing',
   processed: 'processed',
   completed: 'processed',
   rejected: 'rejected',
@@ -53,6 +62,10 @@ export function toRefund(raw: ApiRefund): RefundView {
     amount: raw.amount,
     status,
     method: raw.method || 'original_payment',
+    destination: raw.destination || (raw.method === 'wallet' ? 'Selorg Wallet' : raw.method === 'bank_transfer' ? 'Bank account' : 'Original payment method'),
+    transactionId: raw.transactionId || '',
+    needsBankAccount: Boolean(raw.needsBankAccount),
+    bankAccountLast4: raw.bankAccountLast4 || '',
     reasonText: raw.reasonText || raw.reason || '',
     ts: raw.date || raw.createdAt || '',
   };
