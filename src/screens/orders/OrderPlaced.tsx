@@ -1,5 +1,5 @@
-import React, { useEffect } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -7,7 +7,9 @@ import type { RouteProp } from '@react-navigation/native';
 import { AnimatedIcon, CleanBadges, PrimaryButton, ScreenContainer } from '../../components';
 import { colors, fontFamily, radii } from '../../theme';
 import { formatCurrency } from '../../utils/format';
-import { useOrders } from '../../context/OrdersContext';
+import { useOrders, type Order } from '../../context/OrdersContext';
+import { ordersApi } from '../../services/orders.service';
+import { toLocalOrder } from '../../utils/mappers';
 import type { RootStackParamList } from '../../navigation/types';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -18,31 +20,76 @@ const CLEAN_CHOICE = ['Pesticide-Free', 'Fertilizer-Free', 'Chemical-Free', 'Non
 export default function OrderPlacedScreen() {
   const navigation = useNavigation<Nav>();
   const route = useRoute<Rt>();
-  const { orders } = useOrders();
-  const order = orders.find(o => o.id === route.params.orderId);
+  const { orders, activeOrder } = useOrders();
+  const orderId = route.params?.orderId;
+  const fromContext =
+    orders.find(o => o.id === orderId) || (activeOrder?.id === orderId ? activeOrder : null);
+  const [fetchedOrder, setFetchedOrder] = useState<Order | null>(null);
+  const [lookupFailed, setLookupFailed] = useState(false);
+  const order = fromContext || fetchedOrder;
 
+  // COD/wallet used to navigate here before `orders` flushed, or a concurrent
+  // list refresh dropped the new row. Fetch that order instead of bouncing to Main.
   useEffect(() => {
-    if (!order) {
-      navigation.reset({ index: 0, routes: [{ name: 'Main' }] });
-    }
-  }, [order, navigation]);
+    if (!orderId || fromContext || fetchedOrder) return;
+    let alive = true;
+    (async () => {
+      try {
+        const detail = await ordersApi.getOrder(orderId);
+        if (!alive) return;
+        setFetchedOrder(toLocalOrder(detail));
+      } catch {
+        if (alive) setLookupFailed(true);
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [fromContext, fetchedOrder, orderId]);
 
-  if (!order) return null;
+  if (!orderId) {
+    return (
+      <ScreenContainer background={colors.white} edges={['top', 'bottom']}>
+        <View style={styles.loadingWrap}>
+          <Text style={styles.loadingText}>We could not open this payment result. Check Orders for the latest status.</Text>
+        </View>
+        <View style={styles.footer}>
+          <PrimaryButton label="Continue shopping" onPress={() => navigation.reset({ index: 0, routes: [{ name: 'Main' }] })} />
+        </View>
+      </ScreenContainer>
+    );
+  }
+
+  if (!order) {
+    return (
+      <ScreenContainer background={colors.white} edges={['top', 'bottom']}>
+        <View style={styles.loadingWrap}>
+          <ActivityIndicator size="large" color={colors.primary} />
+          <Text style={styles.loadingText}>
+            {lookupFailed ? 'We could not open this order yet. It is saved — check Orders.' : 'Confirming your order…'}
+          </Text>
+        </View>
+      </ScreenContainer>
+    );
+  }
 
   const unpaid = order.paymentStatus === 'pending' || order.paymentStatus === 'failed';
   if (unpaid) {
+    const failed = order.paymentStatus === 'failed';
     return (
       <ScreenContainer background={colors.white} edges={['top', 'bottom']}>
         <View style={styles.content}>
-          <Text style={styles.title}>Payment failed</Text>
+          <Text style={styles.title}>{failed ? 'Payment failed' : 'Payment not completed'}</Text>
           <Text style={styles.subtitle}>
-            This order was not confirmed. No successful payment was recorded. You can retry payment.
+            {failed
+              ? 'This order was not confirmed. No successful payment was recorded. You can retry payment.'
+              : 'No payment was taken for this order. You can pay now without placing it again.'}
           </Text>
         </View>
         <View style={styles.footer}>
           <PrimaryButton
-            label="Retry payment"
-            onPress={() => navigation.replace('Payment', { method: 'online' })}
+            label={failed ? 'Retry payment' : 'Pay now'}
+            onPress={() => navigation.replace('Payment', { method: 'online', orderId: order.id })}
           />
           <PrimaryButton
             label="Back to home"
@@ -77,9 +124,23 @@ export default function OrderPlacedScreen() {
           <CleanBadges items={CLEAN_CHOICE} compact />
         </View>
 
-        <View style={styles.orderNumberCard}>
-          <Text style={styles.orderNumberLabel}>ORDER NUMBER</Text>
+        <View style={styles.orderNumberCard} testID="payment-success-receipt">
+          <Text style={styles.orderNumberLabel}>PAYMENT STATUS</Text>
+          <Text style={styles.orderNumberValue}>{cod ? 'Pay on delivery' : 'Completed'}</Text>
+          <Text style={styles.orderNumberLabel}>AMOUNT</Text>
+          <Text style={styles.orderNumberValue}>{formatCurrency(route.params?.paidAmount ?? order.totalBill)}</Text>
+          <Text style={styles.orderNumberLabel}>PAYMENT METHOD</Text>
+          <Text style={styles.orderNumberValue}>
+            {route.params?.paymentMethodLabel || (cod ? 'Cash on delivery' : order.method === 'wallet' ? 'Selorg Wallet' : 'Online')}
+          </Text>
+          <Text style={styles.orderNumberLabel}>ORDER ID</Text>
           <Text style={styles.orderNumberValue}>{order.orderNumber}</Text>
+          {!cod && route.params?.txnId ? (
+            <>
+              <Text style={styles.orderNumberLabel}>TRANSACTION ID</Text>
+              <Text style={styles.orderNumberValue}>{route.params.txnId}</Text>
+            </>
+          ) : null}
         </View>
       </View>
 
@@ -88,11 +149,17 @@ export default function OrderPlacedScreen() {
           testID="order-placed-track"
           label="Track order"
           icon="truck"
-          onPress={() => navigation.replace('Tracking', { orderId: route.params.orderId })}
+          onPress={() => navigation.replace('Tracking', { orderId })}
+        />
+        <PrimaryButton
+          testID="order-placed-view"
+          label="View order"
+          kind="ghost"
+          onPress={() => navigation.replace('OrderDetail', { orderId })}
         />
         <PrimaryButton
           testID="order-placed-home"
-          label="Back to home"
+          label="Continue shopping"
           kind="ghost"
           onPress={() => navigation.reset({ index: 0, routes: [{ name: 'Main' }] })}
         />
@@ -103,6 +170,19 @@ export default function OrderPlacedScreen() {
 }
 
 const styles = StyleSheet.create({
+  loadingWrap: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+    paddingHorizontal: 24,
+  },
+  loadingText: {
+    fontFamily: fontFamily.medium,
+    fontSize: 14,
+    color: colors.textMuted,
+    textAlign: 'center',
+  },
   gradient: { flex: 1 },
   content: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 24, gap: 12 },
   badge: {

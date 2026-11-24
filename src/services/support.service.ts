@@ -1,4 +1,7 @@
 import SelorgApi from '../api';
+import { messagesFromResponse, type SupportMessage } from './support.contract';
+
+export type { SupportMessage } from './support.contract';
 
 /**
  * Customer support tickets.
@@ -6,19 +9,12 @@ import SelorgApi from '../api';
  */
 
 export interface SupportTicket {
-  _id: string;
+  id?: string;
+  _id?: string;
   subject?: string;
-  status: 'open' | 'resolved' | 'closed';
-  createdAt: string;
-  messages?: SupportMessage[];
-}
-
-export interface SupportMessage {
-  from: 'customer' | 'agent';
-  text?: string;
-  message?: string;
+  status?: string;
   createdAt?: string;
-  ts?: string;
+  messages?: SupportMessage[];
 }
 
 const unwrap = <T,>(res: any): T => (res && 'data' in res ? res.data : res) as T;
@@ -39,7 +35,7 @@ export const supportApi = {
     SelorgApi.post('/support/tickets', { data }).then(unwrap<SupportTicket>),
 
   getTicketMessages: (ticketId: string): Promise<SupportMessage[]> =>
-    SelorgApi.get(`/support/tickets/${ticketId}/messages`).then(unwrap<SupportMessage[]>),
+    SelorgApi.get(`/support/tickets/${ticketId}/messages`).then(messagesFromResponse),
 
   sendMessage: (ticketId: string, message: string): Promise<SupportMessage> =>
     SelorgApi.post(`/support/tickets/${ticketId}/messages`, { data: { message: message.trim() } }).then(unwrap<SupportMessage>),

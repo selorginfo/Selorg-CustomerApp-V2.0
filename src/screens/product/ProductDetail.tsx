@@ -34,6 +34,7 @@ import { useCart } from '../../context/CartContext';
 import { useWishlist } from '../../context/WishlistContext';
 import { useAddress } from '../../context/AddressContext';
 import { formatCurrency } from '../../utils/format';
+import { dedupeSizeOptions } from '../../utils/variantSizes';
 import { showToast } from '../../utils/toast';
 import type { RootStackParamList } from '../../navigation/types';
 
@@ -176,8 +177,11 @@ export default function ProductDetail() {
       .then(res => {
         const p = res?.product;
         if (p?._id) {
+          const sizes = dedupeSizeOptions(res.variants || [], p._id);
+          const selected = sizes.findIndex(v => v.id === p._id);
           setProduct(p);
-          setVariants(res.variants || []);
+          setVariants(sizes);
+          setVariantIndex(selected >= 0 ? selected : 0);
           setRelated(res.relatedProducts || []);
         } else {
           setError(true);
@@ -773,12 +777,11 @@ const styles = StyleSheet.create({
   rowBetween: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   seeAllLink: { fontFamily: fontFamily.bold, fontSize: 12.5, color: colors.primary },
 
-  variantRow: { flexDirection: 'row', gap: 10 },
+  variantRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   variantPill: {
-    flex: 1,
-    minWidth: 0,
+    minWidth: 76,
     paddingVertical: 11,
-    paddingHorizontal: 8,
+    paddingHorizontal: 12,
     borderRadius: radii.xl - 2,
     borderWidth: 1.5,
     borderColor: colors.border,

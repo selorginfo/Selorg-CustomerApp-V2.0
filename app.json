@@ -1,4 +1,9 @@
 {
   "name": "Selorg",
-  "displayName": "Selorg"
+  "displayName": "Selorg",
+  "extra": {
+    "eas": {
+      "projectId": "184e3269-5eb9-4c8e-bf06-ff0f076ef96c"
+    }
+  }
 }

@@ -19,6 +19,7 @@
 import { Storage } from './storage';
 import configs from './configs';
 import { normalizeApiAssetUrl } from '../config/api';
+import { shouldRewriteAsset } from '../config/assetUrl';
 import { normalizeApiError } from '../utils/apiError';
 import { isNetworkFailure, reportNetworkFailure, reportNetworkSuccess } from '../utils/connectivity';
 
@@ -54,15 +55,13 @@ const friendlyErrorMessage = (errorBody: any, status: number) => {
 // Response asset-URL normalization
 // ---------------------------------------------------------------------------
 
-const ASSET_KEY_PATTERN = /(image|images|video|thumbnail|avatar|logo|banner|icon|url)/i;
-
 const normalizePayload = (value: any, keyName = ''): any => {
   if (typeof value === 'string') {
-    return ASSET_KEY_PATTERN.test(keyName) ? normalizeApiAssetUrl(value) : value;
+    return shouldRewriteAsset(keyName, value) ? normalizeApiAssetUrl(value) : value;
   }
   if (Array.isArray(value)) {
     return value.map(entry =>
-      typeof entry === 'string' && ASSET_KEY_PATTERN.test(keyName)
+      typeof entry === 'string' && shouldRewriteAsset(keyName, entry)
         ? normalizeApiAssetUrl(entry)
         : normalizePayload(entry),
     );
@@ -146,7 +145,8 @@ const buildRequestInit = (options: any) => {
   };
 
   const token = Storage.getItem('accessToken');
-  if (token) headers.Authorization = `Bearer ${token}`;
+  // Explicit Authorization (e.g. logout / remove-token after clearAuth) must win.
+  if (token && !headers.Authorization) headers.Authorization = `Bearer ${token}`;
 
   const init: any = { method: options.method, headers };
 
@@ -204,7 +204,13 @@ const performFetch = async (finalUrl: string, options: any, requestId: number) =
     }
     logResponse(requestId, response.status, finalUrl, errorBody);
 
-    if (response.status === 401) _onUnauthorized?.();
+    if (response.status === 401) {
+      // A 401 for a token that login has already replaced must not sign the
+      // new session out — that was dropping the wallet bearer right after OTP.
+      const sent = String(headers.Authorization || '').replace(/^Bearer\s+/i, '').trim();
+      const current = String(Storage.getItem('accessToken') || '').trim();
+      if (current && sent === current) _onUnauthorized?.();
+    }
 
     return Promise.reject(
       normalizeApiError({

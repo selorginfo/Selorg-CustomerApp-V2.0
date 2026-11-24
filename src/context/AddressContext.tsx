@@ -172,6 +172,7 @@ export const AddressProvider: React.FC<{ children: ReactNode }> = ({ children })
     try {
       const check = await storeApi.assign(latitude, longitude);
       if (check?.serviceable === false) {
+        mmkvStorage.removeItem('assignedStoreId');
         showToast(check.message || "We don't deliver to this location yet.", 'err');
         return false;
       }

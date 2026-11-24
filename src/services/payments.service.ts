@@ -42,6 +42,7 @@ export interface WorldlineStatus {
   paymentStatus?: string;
   orderPaymentStatus?: string;
   uiState?: string;
+  paymentOutcome?: string;
   purpose?: string;
   walletCredited?: boolean;
   recommendedAction?: string;
@@ -86,9 +87,31 @@ export const paymentsApi = {
       unwrap<{ success: boolean; orderId?: string }>,
     ),
 
-  abortWorldlinePayment: (payload: { orderId: string; txnId: string; reason?: string }): Promise<void> =>
-    SelorgApi.post('/payments/worldline/abort', { data: payload }).then(() => undefined),
+  abortWorldlinePayment: (payload: {
+    orderId: string;
+    txnId: string;
+    reason?: string;
+  }): Promise<{
+    status?: string;
+    aborted?: boolean;
+    held?: boolean;
+    settledFromInquiry?: boolean;
+  }> =>
+    SelorgApi.post('/payments/worldline/abort', { data: payload }).then(
+      unwrap<{
+        status?: string;
+        aborted?: boolean;
+        held?: boolean;
+        settledFromInquiry?: boolean;
+      }>,
+    ),
 
-  getWorldlineStatus: (orderId: string): Promise<WorldlineStatus> =>
-    SelorgApi.get('/payments/worldline/status', { query: { orderId } }).then(unwrap<WorldlineStatus>),
+  getWorldlineStatus: (
+    orderId: string,
+    options?: { timeoutMs?: number },
+  ): Promise<WorldlineStatus> =>
+    SelorgApi.get('/payments/worldline/status', {
+      query: { orderId },
+      timeoutMs: options?.timeoutMs,
+    }).then(unwrap<WorldlineStatus>),
 };

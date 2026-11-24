@@ -1,6 +1,5 @@
 import { Alert, Linking, PermissionsAndroid, Platform } from 'react-native';
 import Geolocation from '@react-native-community/geolocation';
-import { GOOGLE_MAPS_API_KEY } from '@env';
 import { locationsApi } from './locations-api.service';
 
 /**
@@ -67,7 +66,7 @@ export function isValidLongitude(n: unknown): n is number {
   return typeof n === 'number' && Number.isFinite(n) && n >= -180 && n <= 180;
 }
 
-export function isValidCoordPair(lat: unknown, lng: unknown): boolean {
+export function isValidCoordPair(lat: unknown, lng: unknown): lat is number {
   return isValidLatitude(lat) && isValidLongitude(lng) && !(lat === 0 && lng === 0);
 }
 
@@ -181,32 +180,10 @@ function mapNativeError(err: { code?: number; message?: string }): LocationError
 }
 
 /**
- * Location of THIS device's network, not the emulator GPS mock and not the
- * API server's data-center IP. The request is made by the phone, so Google
- * sees the same connection the website uses.
+ * Approximate fix from the backend. The Geolocation REST key is not shipped
+ * in the app — a key used with fetch cannot be locked to this package.
  */
 async function locateFromThisDevice(): Promise<Coordinates | null> {
-  const key = String(GOOGLE_MAPS_API_KEY || '').trim();
-  if (key) {
-    try {
-      const res = await fetch(`https://www.googleapis.com/geolocation/v1/geolocate?key=${encodeURIComponent(key)}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ considerIp: true }),
-      });
-      const json = (await res.json()) as {
-        location?: { lat?: number; lng?: number };
-        accuracy?: number;
-      };
-      const lat = json?.location?.lat;
-      const lng = json?.location?.lng;
-      if (isValidCoordPair(lat, lng) && !isEmulatorDummyFix(lat, lng)) {
-        return { latitude: lat, longitude: lng, accuracy: json.accuracy };
-      }
-    } catch {
-      // Try the backend next. It uses the machine running the API.
-    }
-  }
   try {
     const approx = await locationsApi.getApproximate();
     if (

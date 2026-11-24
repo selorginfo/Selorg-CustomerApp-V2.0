@@ -1,4 +1,5 @@
-import type { ApiCategory, ApiProduct } from '../services/catalog.service';
+import type { ApiCategory, ApiProduct, CategoryBrowseResult } from '../services/catalog.service';
+import { normalizeVideoPlayback } from './videoUrl';
 
 /**
  * Sellable units for a product card, or `null` when the API did not report
@@ -51,6 +52,11 @@ export function normalizeProduct(raw: Record<string, unknown>): ApiProduct {
   };
 }
 
+function mediaString(value: unknown): string | undefined {
+  const text = String(value ?? '').trim();
+  return text || undefined;
+}
+
 /** Normalize category id and image fields from selorg-service. */
 export function normalizeCategory(raw: Record<string, unknown>): ApiCategory {
   const id = String(raw._id ?? raw.id ?? '');
@@ -64,6 +70,11 @@ export function normalizeCategory(raw: Record<string, unknown>): ApiCategory {
       (raw.thumbnailUrl as string) ||
       (raw.cardImageUrl as string),
     slug: (raw.slug as string) || id,
+    bannerImage: mediaString(raw.bannerImage),
+    bannerId: mediaString(raw.bannerId),
+    bannerVideo: mediaString(raw.bannerVideo),
+    youtubeUrl: mediaString(raw.youtubeUrl),
+    videoPlayback: normalizeVideoPlayback(raw.videoPlayback),
     children: Array.isArray(subs)
       ? (subs as Record<string, unknown>[]).map(normalizeCategory)
       : (raw.children as ApiCategory[] | undefined),
@@ -71,6 +82,30 @@ export function normalizeCategory(raw: Record<string, unknown>): ApiCategory {
       ? (subs as ApiCategory[]).map(c => c.name || String(c))
       : (raw.subs as string[] | undefined),
   };
+}
+
+/** Products response also carries the subcategory banners and videos. */
+export function mapCategoryBrowse(data: unknown): CategoryBrowseResult {
+  if (Array.isArray(data)) {
+    return {
+      products: (data as Record<string, unknown>[]).map(normalizeProduct),
+      subcategories: [],
+    };
+  }
+  const source = data && typeof data === 'object' ? (data as Record<string, unknown>) : {};
+  const products = Array.isArray(source.products)
+    ? (source.products as Record<string, unknown>[]).map(normalizeProduct)
+    : [];
+  const categoryRaw = source.category;
+  const category =
+    categoryRaw && typeof categoryRaw === 'object'
+      ? normalizeCategory(categoryRaw as Record<string, unknown>)
+      : undefined;
+  const subcategories = Array.isArray(source.subcategories)
+    ? (source.subcategories as Record<string, unknown>[]).map(normalizeCategory)
+    : [];
+  const pagination = source.pagination as CategoryBrowseResult['meta'];
+  return { products, meta: pagination, category, subcategories };
 }
 
 /** `collections_deal_in_lowest_price` → `deal-in-lowest-price` */

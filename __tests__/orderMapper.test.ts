@@ -54,6 +54,25 @@ describe('toLocalOrder', () => {
     expect(toLocalOrder(legacy as never).id).toBe('abc123');
   });
 
+  it('reads paymentMethod.type from the live order payload', () => {
+    const walletOrder = {
+      ...API_ORDER,
+      paymentStatus: 'paid',
+      paymentMethodType: undefined,
+      paymentMethod: { type: 'wallet', display: 'Selorg Wallet' },
+    };
+    const mapped = toLocalOrder(walletOrder as never);
+    expect(mapped.method).toBe('wallet');
+    expect(mapped.paymentStatus).toBe('paid');
+
+    const codOrder = {
+      ...API_ORDER,
+      paymentMethodType: undefined,
+      paymentMethod: { type: 'cash' },
+    };
+    expect(toLocalOrder(codOrder as never).method).toBe('cod');
+  });
+
   it('does not throw when orderNumber is missing', () => {
     const noNumber = { id: 'abcdef123456', items: [], timeline: [] };
     expect(() => toLocalOrder(noNumber as never)).not.toThrow();

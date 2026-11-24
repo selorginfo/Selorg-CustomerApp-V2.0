@@ -184,8 +184,11 @@ export const CartProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     [],
   );
 
-  const refreshCart = useCallback(async () => {
+  const refreshSeq = useRef(0);
+  const refreshCart = useCallback(async (couponOverride?: string | null) => {
+    const seq = ++refreshSeq.current;
     const forAccount = accountId;
+    const couponCode = couponOverride !== undefined ? couponOverride : coupon;
     if (!isAuthenticated()) {
       setItems(readGuestCart());
       const localTotal = readGuestCart().reduce((s, i) => s + i.price * i.quantity, 0);
@@ -199,17 +202,19 @@ export const CartProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     setLoading(true);
     try {
       const query: { coupon_code?: string; zone?: string; payment_method?: string } = {};
-      if (coupon) query.coupon_code = coupon;
+      if (couponCode) query.coupon_code = couponCode;
       if (pricingContext.zone) query.zone = pricingContext.zone;
       if (pricingContext.paymentMethod) query.payment_method = pricingContext.paymentMethod;
       const cart = await cartApi.getCart(Object.keys(query).length ? query : undefined);
+      if (seq !== refreshSeq.current) return;
       if (accountRef.current !== forAccount) return;
       applyCartResponse(cart, cartSetters);
     } catch {
+      if (seq !== refreshSeq.current) return;
       // Same account keeps its cart; a switched account must not.
       if (accountRef.current !== forAccount) setItems([]);
     } finally {
-      setLoading(false);
+      if (seq === refreshSeq.current) setLoading(false);
     }
   }, [accountId, coupon, cartSetters, pricingContext]);
 
@@ -461,7 +466,7 @@ export const CartProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           setCoupon(normalized);
           setDiscount(amount);
           showToast(result.is_cashback ? `${normalized} applied — cashback after delivery` : `Coupon ${normalized} applied`);
-          if (isAuthenticated()) await refreshCart();
+          if (isAuthenticated()) await refreshCart(normalized);
         } else {
           setCoupon(null);
           setDiscount(0);
@@ -480,7 +485,13 @@ export const CartProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     if (isAuthenticated()) refreshCart();
   }, [refreshCart]);
 
-  const setTip = useCallback((v: number) => setTipState(v), []);
+  const setTip = useCallback((v: number) => {
+    if (!Number.isFinite(v) || v <= 0) {
+      setTipState(0);
+      return;
+    }
+    setTipState(Math.min(500, Math.round(v)));
+  }, []);
 
   const clearCart = useCallback(async () => {
     setCoupon(null);

@@ -18,6 +18,7 @@ export const ORDER_STATUS_EVENTS = [
   'order.handed_over',
   'order.rider_accepted',
   'order.out_for_delivery',
+  'order.arrived',
   'order.delivered',
   'order.cancelled',
 ] as const;
@@ -87,11 +88,16 @@ export function subscribeToOrder(orderId: string, handlers: OrderRealtimeHandler
     handlers.onRiderLocation?.(payload);
   };
 
-  s.emit('subscribe:order', orderId);
+  const resubscribe = () => {
+    s.emit('subscribe:order', orderId);
+  };
+  resubscribe();
+  s.on('connect', resubscribe);
   ORDER_STATUS_EVENTS.forEach(event => s.on(event, onStatus));
   s.on('rider:location', onGps);
 
   return () => {
+    s.off('connect', resubscribe);
     s.emit('unsubscribe:order', orderId);
     ORDER_STATUS_EVENTS.forEach(event => s.off(event, onStatus));
     s.off('rider:location', onGps);

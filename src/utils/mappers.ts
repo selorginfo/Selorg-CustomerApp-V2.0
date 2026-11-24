@@ -41,6 +41,16 @@ export function mapApiCart(cart: ApiCart): {
   };
 }
 
+/** API sends `paymentMethod.type` (and sometimes `methodType`). Older fixtures used `paymentMethodType`. */
+export function paymentTypeOf(raw: ApiOrder): string {
+  const pm = raw.paymentMethod;
+  if (pm && typeof pm === 'object') {
+    const rec = pm as { type?: string; methodType?: string };
+    return String(rec.type || rec.methodType || '').toLowerCase();
+  }
+  return String(raw.paymentMethodType || (typeof pm === 'string' ? pm : '')).toLowerCase();
+}
+
 export function toLocalOrder(raw: ApiOrder): Order {
   const statusMap: Record<string, OrderStatus> = {
     pending: 'pending',
@@ -57,12 +67,13 @@ export function toLocalOrder(raw: ApiOrder): Order {
     failed: 'failed',
     cod_pending: 'cod_pending',
   };
+  const methodType = paymentTypeOf(raw);
   const method: PayMethod | undefined =
-    raw.paymentMethodType === 'cash'
+    methodType === 'cash' || methodType === 'cod'
       ? 'cod'
-      : raw.paymentMethodType === 'wallet'
+      : methodType === 'wallet' || methodType === 'selorg_wallet'
         ? 'wallet'
-        : raw.paymentMethodType
+        : methodType
           ? 'online'
           : undefined;
 

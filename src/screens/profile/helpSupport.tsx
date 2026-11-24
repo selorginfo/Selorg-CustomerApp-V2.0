@@ -108,7 +108,7 @@ export default function HelpSupportScreen() {
                 </View>
                 <View style={[styles.statusPill, { backgroundColor: open ? colors.tint : colors.background }]}>
                   <Text style={[styles.statusLabel, { color: open ? colors.primary : colors.textMuted }]}>
-                    {open ? 'Open' : 'Resolved'}
+                    {t.statusLabel || (open ? 'Open' : 'Resolved')}
                   </Text>
                 </View>
               </Pressable>

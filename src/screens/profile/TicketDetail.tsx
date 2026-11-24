@@ -57,7 +57,7 @@ export default function TicketDetailScreen() {
     <ScreenContainer>
       <Header
         title={ticket.subject}
-        subtitle={resolved ? 'Resolved' : 'Support · online'}
+        subtitle={ticket.statusLabel || (resolved ? 'Resolved' : 'Support · online')}
         onBack={() => navigation.goBack()}
       />
       <View style={styles.flex}>

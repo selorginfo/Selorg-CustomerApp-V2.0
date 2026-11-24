@@ -3,6 +3,7 @@ package com.selorg.com
 import android.app.Application
 import android.os.Build
 import android.preference.PreferenceManager
+import android.provider.Settings
 import com.facebook.react.PackageList
 import com.facebook.react.R as ReactR
 import com.facebook.react.ReactApplication
@@ -30,9 +31,9 @@ class MainApplication : Application(), ReactApplication {
   }
 
   /**
-   * Physical devices default to localhost, which requires `adb reverse tcp:8081 tcp:8081`.
-   * On wireless ADB this tunnel still works even when the router blocks direct LAN access
-   * (AP/client isolation), so localhost + reverse is more reliable than the LAN IP.
+   * Physical devices use localhost when `adb reverse` forwards the packager port.
+   * If that tunnel is down, set the host from the computer:
+   * `adb shell settings put global debug_http_host <lan-ip>:<metro-port>`
    */
   @Suppress("DEPRECATION")
   private fun configurePhysicalDevicePackagerHost() {
@@ -49,13 +50,20 @@ class MainApplication : Application(), ReactApplication {
     }
 
     val port = resources.getInteger(ReactR.integer.react_native_dev_server_port)
-    if (port <= 0) {
-      return
-    }
-
-    // Prefer localhost — traffic is forwarded via `adb reverse` and works over wireless
-    // ADB even when the router blocks device-to-device LAN (AP isolation).
-    val host = "localhost:$port"
+    // `adb shell settings put global debug_http_host <ip>:<port>` overrides
+    // localhost when wireless ADB reverse does not forward packager traffic.
+    val fromAdb =
+        try {
+          Settings.Global.getString(contentResolver, "debug_http_host")?.trim().orEmpty()
+        } catch (_: SecurityException) {
+          ""
+        }
+    val host =
+        when {
+          fromAdb.isNotEmpty() -> fromAdb
+          port > 0 -> "localhost:$port"
+          else -> return
+        }
     val prefs = PreferenceManager.getDefaultSharedPreferences(this)
     if (prefs.getString("debug_http_host", null) != host) {
       prefs.edit().putString("debug_http_host", host).apply()
