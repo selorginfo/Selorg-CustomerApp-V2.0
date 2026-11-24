@@ -784,7 +784,11 @@ export const OrdersProvider: React.FC<{ children: ReactNode }> = ({ children }) 
             setPendingGatewayTxnId(null);
             unpaidOnlineOrderRef.current = null;
             void cart.clearCart();
-            return { success: true, order: { id: orderId, paymentStatus: 'paid' } as Order };
+            return {
+              success: true,
+              order: { id: orderId, paymentStatus: 'paid' } as Order,
+              gatewayTxnId: pendingGatewayTxnId || undefined,
+            };
           }
         }
 
@@ -796,7 +800,7 @@ export const OrdersProvider: React.FC<{ children: ReactNode }> = ({ children }) 
           setPayState('success');
           setFailedMethod(null);
           void cart.clearCart();
-          return { success: true, order };
+          return { success: true, order, gatewayTxnId: pendingGatewayTxnId || undefined };
         }
         if (!sawStatus || !failed) {
           // Still created, pending, unknown, or status unreachable. Never hard-fail.

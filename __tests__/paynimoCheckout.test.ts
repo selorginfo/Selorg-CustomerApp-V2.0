@@ -34,15 +34,15 @@ describe('Paynimo checkout instruments', () => {
     const payload = payloadOf(html);
     expect(payload.paymentMode).toBe('all');
     expect(payload.features?.enableExpressPay).toBe(false);
-    expect(payload.features?.enableNewWindowFlow).toBe(true);
+    expect(payload.features?.enableNewWindowFlow).toBe(false);
     expect(payload.features?.enableTopWindowRedirection).toBe(false);
     expect(payload.features?.singleBankForceRedirect).toBe(false);
   });
 
-  it('does not force the card window closed after the payload is built', () => {
+  it('keeps checkout in the current window after the payload is built', () => {
     const html = buildPaynimoCheckoutHtml(session, { paymentMode: 'all' });
-    expect(html).toContain('enableNewWindowFlow = true');
-    expect(html).not.toContain('enableNewWindowFlow = false');
+    expect(html).toContain('enableNewWindowFlow = false');
+    expect(html).not.toContain('enableNewWindowFlow = true');
     expect(html).toContain('window.open = function');
     expect(html).toContain('bankFrmSubmit');
     expect(html).toContain("this.target = '_self'");
@@ -140,14 +140,18 @@ describe('Paynimo popup hand-off', () => {
         writes.push('close');
       },
     };
-    const messages: Array<{ type?: string; detail?: { url?: string } }> = [];
+    const messages: Array<{ type?: string; detail?: { url?: string; reason?: string } }> = [];
+    const timers: Array<() => void> = [];
     const context = vm.createContext({
       window: {},
       document,
       HTMLFormElement,
       fetch: () => new Promise(() => {}),
       URL,
-      setTimeout: () => 0,
+      setTimeout: (fn: () => void) => {
+        timers.push(fn);
+        return timers.length;
+      },
       clearTimeout: () => {},
       console,
     });
@@ -164,7 +168,19 @@ describe('Paynimo popup hand-off', () => {
         assigned.push(next);
       },
     };
-    return { context, submits, writes, assigned, nodes, messages, HTMLFormElement };
+    return {
+      context,
+      submits,
+      writes,
+      assigned,
+      nodes,
+      messages,
+      HTMLFormElement,
+      flush: () => {
+        const queued = timers.splice(0);
+        queued.forEach(fn => fn());
+      },
+    };
   }
 
   it('posts the bank form in this page and ignores the waiting popup', () => {
@@ -200,19 +216,37 @@ describe('Paynimo popup hand-off', () => {
     expect(submits.map(item => item.target)).toEqual(['_blank', '_blank', 'checkoutResponseIframe']);
   });
 
-  it('hands the card gateway GET to the native WebView and leaves UPI on the top window', () => {
-    const { context, assigned, writes, messages } = installCheckout();
+  it('does not GET the card gateway and still opens the issuer OTP page', () => {
+    const { context, assigned, writes, messages, flush } = installCheckout();
     expect(context.window.open('upi://pay?pa=merchant@upi')).toBeNull();
     const popup = context.window.open('', 'bank');
+    expect(popup).not.toBe(context.window);
     popup.location.assign('https://www.tpsl-india.in/PaymentGateway/txnreqcardvern.pg?token=hidden');
     popup.location = 'https://www.tpsl-india.in/PaymentGateway/txnreqcardvern.pg?token=again';
-    popup.location.href('https://issuer.example/acs');
+    popup.location.href = 'https://issuer.example/acs';
+    expect(popup.location.href).toBe('https://issuer.example/acs');
     popup.location.assign('javascript:alert(1)');
     popup.document.write('<html><body>Please wait</body></html>');
+    expect(messages.filter(message => message.type === 'follow-get')).toEqual([]);
+    flush();
     expect(assigned).toEqual(['upi://pay?pa=merchant@upi']);
     expect(messages.filter(message => message.type === 'follow-get').map(message => message.detail?.url)).toEqual([
-      'https://www.tpsl-india.in/PaymentGateway/txnreqcardvern.pg?token=hidden',
+      'https://issuer.example/acs',
     ]);
+    expect(messages.some(message => message.detail?.reason === 'card-post')).toBe(true);
     expect(writes).toEqual([]);
+  });
+
+  it('does not GET the gateway when the card step is a bank form POST', () => {
+    const { context, messages, flush, HTMLFormElement: Form } = installCheckout();
+    const popup = context.window.open('https://www.tpsl-india.in/PaymentGateway/txnreq.pg', 'bank');
+    expect(popup).not.toBe(context.window);
+    const form = new Form();
+    form.id = 'bankFrmSubmit';
+    (form as { nodeType: number }).nodeType = 1;
+    popup.document.body.append(form);
+    flush();
+    expect(messages.filter(message => message.type === 'follow-get')).toEqual([]);
+    expect(messages.some(message => message.detail?.reason === 'card-post')).toBe(true);
   });
 });

@@ -83,6 +83,40 @@ export function isWorldlineReturnUrl(url: string): boolean {
  * True only when the body still has gateway crypto fields to send to `/worldline/complete`.
  * A redirect or `paynimo_bridge` hint is not a capture. The app must poll `/worldline/status`.
  */
+export function gatewayStatusCode(detail: Record<string, unknown> | null | undefined): string {
+  if (!detail) return '';
+  const method = detail.paymentMethod;
+  const nested =
+    method && typeof method === 'object'
+      ? (method as { paymentTransaction?: { statusCode?: unknown } }).paymentTransaction?.statusCode
+      : '';
+  return String(detail.statusCode || detail.txn_status || detail.txnStatus || nested || '').trim();
+}
+
+export type HostedGatewayDecision = 'ignore' | 'complete' | 'keep_open';
+
+/**
+ * Paynimo's in-page responseHandler is not the issuer OTP result.
+ * A bare 0399 fired while the card window is opening used to close the WebView
+ * and mark the payment failed before 3-D Secure started.
+ * A pipe `msg` or hash is a real gateway payload and may complete the flow.
+ */
+export function hostedGatewayDecision(
+  detail: Record<string, unknown> | null | undefined,
+  handoffStarted: boolean,
+): HostedGatewayDecision {
+  if (!detail || typeof detail !== 'object') return 'ignore';
+  const code = gatewayStatusCode(detail);
+  // statusCode alone is not a verified gateway body. A pipe msg or hash is.
+  const hasPayload = String(detail.msg || '').includes('|') || String(detail.hash || '').trim().length > 0;
+  if (!code && !hasPayload) return 'ignore';
+  if (code === '0396' || code === '0398') return 'keep_open';
+  if (handoffStarted && code !== '0300') return 'keep_open';
+  if (code === '0399' && !hasPayload) return 'keep_open';
+  if (code === '0300' || code === '0392' || code === '0399' || hasPayload) return 'complete';
+  return 'ignore';
+}
+
 export function shouldSubmitGatewayResponse(response: Record<string, unknown> | null | undefined): boolean {
   if (!response || typeof response !== 'object') return false;
   if (String(response.paynimo_bridge || '') === '1') return false;

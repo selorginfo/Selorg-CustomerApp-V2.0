@@ -75,15 +75,26 @@ export function classifyCheckoutNavigation(url: string): CheckoutNavDecision {
 }
 
 /**
- * Paynimo's card step is a GET on the popup (`bankWindow.location.assign` of
- * the gateway or issuer URL). The checkout document itself stays on paynimo.com.
- * Only that off-checkout HTTPS navigation should replace the visible WebView.
+ * Worldline card endpoints (`txnreq*.pg`) only accept the card POST.
+ * A top-level GET is declined before 3-D Secure, so the bank OTP page never starts.
+ */
+export function isCardGatewayPostUrl(url: string): boolean {
+  const raw = String(url || '').trim().toLowerCase();
+  if (!raw) return false;
+  if (raw.includes('txnreq')) return true;
+  return raw.includes('paymentgateway') && raw.includes('.pg');
+}
+
+/**
+ * Issuer ACS / OTP pages may replace the visible WebView. The card gateway
+ * URL must not: that navigation is a POST (`bankFrmSubmit` / `frmPayment`).
  * A return URL is left to the normal POST completion path.
  */
 export function isPopupGatewayNavigation(url: string): boolean {
   const raw = String(url || '').trim();
   if (!/^https:\/\//i.test(raw)) return false;
   if (isWorldlineReturnUrl(raw)) return false;
+  if (isCardGatewayPostUrl(raw)) return false;
   const host = httpHost(raw);
   if (!host || host === 'paynimo.com' || host.endsWith('.paynimo.com')) return false;
   return classifyCheckoutNavigation(raw) === 'allow';

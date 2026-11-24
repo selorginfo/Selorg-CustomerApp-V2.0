@@ -44,7 +44,7 @@ describe('checkout navigation', () => {
 
   it('keeps Paynimo and the inline checkout page', () => {
     expect(isPopupGatewayNavigation('https://www.tpsl-india.in/PaymentGateway/txnreqcardvern.pg?token=hidden')).toBe(
-      true,
+      false,
     );
     expect(isPopupGatewayNavigation('https://acs.hdfcbank.com/acs/auth')).toBe(true);
     expect(isPopupGatewayNavigation('https://www.paynimo.com/paynimocheckout/')).toBe(false);

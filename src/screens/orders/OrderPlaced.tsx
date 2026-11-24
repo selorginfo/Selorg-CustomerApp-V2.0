@@ -21,7 +21,7 @@ export default function OrderPlacedScreen() {
   const navigation = useNavigation<Nav>();
   const route = useRoute<Rt>();
   const { orders, activeOrder } = useOrders();
-  const orderId = route.params.orderId;
+  const orderId = route.params?.orderId;
   const fromContext =
     orders.find(o => o.id === orderId) || (activeOrder?.id === orderId ? activeOrder : null);
   const [fetchedOrder, setFetchedOrder] = useState<Order | null>(null);
@@ -31,7 +31,7 @@ export default function OrderPlacedScreen() {
   // COD/wallet used to navigate here before `orders` flushed, or a concurrent
   // list refresh dropped the new row. Fetch that order instead of bouncing to Main.
   useEffect(() => {
-    if (fromContext || fetchedOrder) return;
+    if (!orderId || fromContext || fetchedOrder) return;
     let alive = true;
     (async () => {
       try {
@@ -46,6 +46,19 @@ export default function OrderPlacedScreen() {
       alive = false;
     };
   }, [fromContext, fetchedOrder, orderId]);
+
+  if (!orderId) {
+    return (
+      <ScreenContainer background={colors.white} edges={['top', 'bottom']}>
+        <View style={styles.loadingWrap}>
+          <Text style={styles.loadingText}>We could not open this payment result. Check Orders for the latest status.</Text>
+        </View>
+        <View style={styles.footer}>
+          <PrimaryButton label="Continue shopping" onPress={() => navigation.reset({ index: 0, routes: [{ name: 'Main' }] })} />
+        </View>
+      </ScreenContainer>
+    );
+  }
 
   if (!order) {
     return (
@@ -111,9 +124,23 @@ export default function OrderPlacedScreen() {
           <CleanBadges items={CLEAN_CHOICE} compact />
         </View>
 
-        <View style={styles.orderNumberCard}>
-          <Text style={styles.orderNumberLabel}>ORDER NUMBER</Text>
+        <View style={styles.orderNumberCard} testID="payment-success-receipt">
+          <Text style={styles.orderNumberLabel}>PAYMENT STATUS</Text>
+          <Text style={styles.orderNumberValue}>{cod ? 'Pay on delivery' : 'Completed'}</Text>
+          <Text style={styles.orderNumberLabel}>AMOUNT</Text>
+          <Text style={styles.orderNumberValue}>{formatCurrency(route.params?.paidAmount ?? order.totalBill)}</Text>
+          <Text style={styles.orderNumberLabel}>PAYMENT METHOD</Text>
+          <Text style={styles.orderNumberValue}>
+            {route.params?.paymentMethodLabel || (cod ? 'Cash on delivery' : order.method === 'wallet' ? 'Selorg Wallet' : 'Online')}
+          </Text>
+          <Text style={styles.orderNumberLabel}>ORDER ID</Text>
           <Text style={styles.orderNumberValue}>{order.orderNumber}</Text>
+          {!cod && route.params?.txnId ? (
+            <>
+              <Text style={styles.orderNumberLabel}>TRANSACTION ID</Text>
+              <Text style={styles.orderNumberValue}>{route.params.txnId}</Text>
+            </>
+          ) : null}
         </View>
       </View>
 
@@ -122,11 +149,17 @@ export default function OrderPlacedScreen() {
           testID="order-placed-track"
           label="Track order"
           icon="truck"
-          onPress={() => navigation.replace('Tracking', { orderId: route.params.orderId })}
+          onPress={() => navigation.replace('Tracking', { orderId })}
+        />
+        <PrimaryButton
+          testID="order-placed-view"
+          label="View order"
+          kind="ghost"
+          onPress={() => navigation.replace('OrderDetail', { orderId })}
         />
         <PrimaryButton
           testID="order-placed-home"
-          label="Back to home"
+          label="Continue shopping"
           kind="ghost"
           onPress={() => navigation.reset({ index: 0, routes: [{ name: 'Main' }] })}
         />

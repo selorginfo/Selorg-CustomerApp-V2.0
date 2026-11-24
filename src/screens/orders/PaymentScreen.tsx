@@ -53,6 +53,20 @@ export default function PaymentScreen() {
   const [unconfirmed, setUnconfirmed] = useState('');
   /** True while Worldline has not confirmed capture or decline — not a failure. */
   const [paymentPending, setPaymentPending] = useState(false);
+  const [openingResult, setOpeningResult] = useState(false);
+  const checkoutPayloadRef = useRef(gatewaySessionPayload);
+  if (gatewaySessionPayload) checkoutPayloadRef.current = gatewaySessionPayload;
+  const [checkoutMounted, setCheckoutMounted] = useState(false);
+  const checkoutVisible = payState === 'awaiting_gateway' && !!gatewaySessionPayload && !unconfirmed;
+
+  useEffect(() => {
+    if (checkoutVisible) {
+      setCheckoutMounted(true);
+      return;
+    }
+    const timer = setTimeout(() => setCheckoutMounted(false), 480);
+    return () => clearTimeout(timer);
+  }, [checkoutVisible]);
   const [pendingVerifyOrderId, setPendingVerifyOrderId] = useState<string | null>(null);
   const [gatewayWatching, setGatewayWatching] = useState(false);
   const settlingRef = useRef(false);
@@ -106,11 +120,33 @@ export default function PaymentScreen() {
   // backing out of the confirmation (or of Tracking, which replaces it) should
   // land on Main, never back inside a checkout the user already completed.
   const goToOrderPlaced = React.useCallback(
-    (orderId: string) => {
-      navigation.reset({
-        index: 1,
-        routes: [{ name: 'Main' }, { name: 'OrderPlaced', params: { orderId } }],
-      });
+    (orderId: string, receipt?: { txnId?: string | null; amount?: number; paymentMethodLabel?: string }) => {
+      const navigate = () => {
+        console.log('[paynimo]', JSON.stringify({ event: 'navigation-result', orderId, outcome: 'paid' }));
+        navigation.reset({
+          index: 1,
+          routes: [
+            { name: 'Main' },
+            {
+              name: 'OrderPlaced',
+              params: {
+                orderId,
+                txnId: receipt?.txnId || undefined,
+                paidAmount: receipt?.amount,
+                paymentMethodLabel: receipt?.paymentMethodLabel || 'Online',
+              },
+            },
+          ],
+        });
+      };
+      // Android leaves a white window if the payment Modal is still visible
+      // when this screen is removed. Close it on the next paint, then navigate.
+      if (payStateRef.current === 'awaiting_gateway') {
+        setOpeningResult(true);
+        setTimeout(navigate, 450);
+        return;
+      }
+      navigate();
     },
     [navigation],
   );
@@ -126,7 +162,11 @@ export default function PaymentScreen() {
           setUnconfirmed('');
           setPaymentPending(false);
           setPendingVerifyOrderId(null);
-          goToOrderPlaced(result.order.id);
+          goToOrderPlaced(result.order.id, {
+            txnId: result.gatewayTxnId,
+            amount: result.order.totalBill,
+            paymentMethodLabel: 'Online',
+          });
           void wallet.reloadWallet();
           return;
         }
@@ -312,7 +352,11 @@ export default function PaymentScreen() {
       : await placeOrder(paying, route.params?.receiver);
     if (result.success && result.order && !result.needsGateway) {
       setUnconfirmed('');
-      goToOrderPlaced(result.order.id);
+      goToOrderPlaced(result.order.id, {
+        txnId: result.gatewayTxnId,
+        amount: result.order.totalBill,
+        paymentMethodLabel: paying === 'online' ? 'Online' : paying === 'wallet' ? 'Selorg Wallet' : 'Cash on delivery',
+      });
       void wallet.reloadWallet();
       return;
     }
@@ -333,7 +377,11 @@ export default function PaymentScreen() {
         const result = await completeGatewayPayment(orderId, '');
         if (result.success && result.order) {
           await wallet.reloadWallet();
-          goToOrderPlaced(result.order.id);
+          goToOrderPlaced(result.order.id, {
+            txnId: result.gatewayTxnId,
+            amount: result.order.totalBill,
+            paymentMethodLabel: 'Online',
+          });
           return;
         }
       }
@@ -399,11 +447,23 @@ export default function PaymentScreen() {
         return;
       }
       const result = await completeGatewayPayment(orderId, response ?? url);
+      console.log(
+        '[paynimo]',
+        JSON.stringify({
+          event: 'verification-result',
+          orderId,
+          outcome: result.success ? 'paid' : result.pendingVerification ? 'pending' : 'failed',
+        }),
+      );
       if (result.success && result.order) {
         setUnconfirmed('');
         setPaymentPending(false);
         setPendingVerifyOrderId(null);
-        goToOrderPlaced(result.order.id);
+        goToOrderPlaced(result.order.id, {
+          txnId: result.gatewayTxnId,
+          amount: result.order.totalBill,
+          paymentMethodLabel: 'Online',
+        });
         void wallet.reloadWallet();
         return;
       }
@@ -429,7 +489,7 @@ export default function PaymentScreen() {
     }
   };
 
-  if (payState === 'processing') {
+  if (payState === 'processing' && !checkoutMounted) {
     return (
       <View style={styles.processingWrap}>
         <ActivityIndicator size="large" color={colors.primary} />
@@ -590,11 +650,19 @@ export default function PaymentScreen() {
         />
       </View>
 
-      {gatewaySessionPayload && payState === 'awaiting_gateway' && !unconfirmed ? (
+      {openingResult ? (
+        <View style={[styles.processingWrap, StyleSheet.absoluteFillObject, { zIndex: 5 }]}>
+          <ActivityIndicator size="large" color={colors.primary} />
+          <Text style={styles.processingTitle}>Payment successful</Text>
+          <Text style={styles.processingSub}>Opening your order…</Text>
+        </View>
+      ) : null}
+
+      {checkoutMounted && checkoutPayloadRef.current ? (
         <WorldlineCheckoutWebView
-          visible
+          visible={checkoutVisible}
           openAllPaymentModes
-          sessionPayload={gatewaySessionPayload}
+          sessionPayload={checkoutPayloadRef.current}
           onComplete={handleGatewayComplete}
           onCancel={leaveCancelledPayment}
           onGatewayProgress={handleGatewayProgress}

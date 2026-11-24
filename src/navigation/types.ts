@@ -39,7 +39,12 @@ export type RootStackParamList = {
         orderId?: string;
       }
     | undefined;
-  OrderPlaced: { orderId: string };
+  OrderPlaced: {
+    orderId: string;
+    txnId?: string;
+    paidAmount?: number;
+    paymentMethodLabel?: string;
+  };
 
   /** orderId of the order to track; falls back to the current active order. */
   Tracking: { orderId?: string } | undefined;

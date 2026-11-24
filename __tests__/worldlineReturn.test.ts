@@ -6,6 +6,8 @@ import {
   isWorldlinePaidStatus,
   isWorldlineReturnUrl,
   retryWhileHeld,
+  gatewayStatusCode,
+  hostedGatewayDecision,
   shouldSubmitGatewayResponse,
   switchFromOnlineDecision,
 } from '../src/utils/worldline';
@@ -144,5 +146,23 @@ describe('explicit switch from online to COD or wallet', () => {
       'block_other_method',
     );
     expect(switchFromOnlineDecision({ uiState: 'PAID', orderPaymentStatus: 'paid' }, true)).toBe('already_paid');
+  });
+});
+
+describe('hosted checkout responseHandler', () => {
+  it('keeps the WebView open when the card window reports failure before a verified payload', () => {
+    const detail = { paymentMethod: { paymentTransaction: { statusCode: '0399' } }, statusCode: '0399' };
+    expect(gatewayStatusCode(detail)).toBe('0399');
+    expect(hostedGatewayDecision(detail, false)).toBe('keep_open');
+    expect(hostedGatewayDecision(detail, true)).toBe('keep_open');
+    expect(hostedGatewayDecision({ statusCode: '0398' }, true)).toBe('keep_open');
+    expect(hostedGatewayDecision({ statusCode: '0396' }, false)).toBe('keep_open');
+  });
+
+  it('completes on a verified success or a cancel before the bank page', () => {
+    expect(hostedGatewayDecision({ statusCode: '0300', msg: '0300|success|ok|txn' }, true)).toBe('complete');
+    expect(hostedGatewayDecision({ statusCode: '0392' }, false)).toBe('complete');
+    expect(hostedGatewayDecision({ msg: '0399|failed|declined|txn|bank|tpsl|10.00' }, false)).toBe('complete');
+    expect(hostedGatewayDecision({}, false)).toBe('ignore');
   });
 });

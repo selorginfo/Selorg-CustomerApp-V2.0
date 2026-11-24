@@ -1,4 +1,5 @@
 import { API_ORIGIN } from '../config/api';
+import { hostedCardFieldScript } from './cardNumberField';
 
 /**
  * The API session's returnUrl is often http://localhost:3333. Inside the app
@@ -42,9 +43,7 @@ export function buildPaynimoCheckoutHtml(
     ...(payload.features || {}),
     enableAbortResponse: true,
     enableExpressPay: false,
-    // Card "Next" replaces this page with returnUrl before the card form when this is false.
-    // Web checkout and the rider app both leave the card form in a same-view window.
-    enableNewWindowFlow: true,
+    enableNewWindowFlow: false,
     enableTopWindowRedirection: false,
     singleBankForceRedirect: false,
   };
@@ -149,15 +148,14 @@ export function buildPaynimoCheckoutHtml(
       }
       payload.consumerData = payload.consumerData || {};
       payload.features = payload.features || {};
-      payload.features.enableNewWindowFlow = true;
+      payload.features.enableNewWindowFlow = false;
       payload.features.enableTopWindowRedirection = false;
       payload.features.singleBankForceRedirect = false;
-      // Paynimo opens window.open(''), writes a waiting page, then does one of:
-      // bankWindow.location.assign/replace/href = httpsUrl (card gateway GET), or
-      // append <form id="bankFrmSubmit" method="post"> and form.submit().
-      // location.assign on an HTML-sourced WebView does not commit that GET, and
-      // doing it in the same turn drops the bridge message. The GET is handed to
-      // the native WebView once. The bank form is still submitted in this page.
+      // Card "Continue" must POST bankFrmSubmit in this visible page. Opening the
+      // gateway URL with a GET (or handing Paynimo the real window) makes Worldline
+      // decline the card before 3-D Secure, so the OTP page never starts.
+      // A real card GET is followed only after a tick, and only if that form is absent.
+      ${hostedCardFieldScript()}
       function diag(detail) {
         notify('diag', detail || {});
       }
@@ -180,6 +178,7 @@ export function buildPaynimoCheckoutHtml(
             this.setAttribute('data-selorg-posted', '1');
             this.target = '_self';
             target = '_self';
+            window.__selorgHandoff = true;
           }
           diag({
             event: 'form-submit',
@@ -195,6 +194,29 @@ export function buildPaynimoCheckoutHtml(
       function showInThisPage(next) {
         if (next) window.location.assign(next);
       }
+      function isCardGatewayPostUrl(value) {
+        var raw = String(value || '').toLowerCase();
+        if (raw.indexOf('txnreq') >= 0) return true;
+        return raw.indexOf('paymentgateway') >= 0 && raw.indexOf('.pg') >= 0;
+      }
+      function postBankForm(form) {
+        if (!form || form.id !== 'bankFrmSubmit') return;
+        if (form.getAttribute('data-selorg-posted') === '1') return;
+        var action = form.getAttribute('action') || form.action || '';
+        if (!action) return;
+        form.target = '_self';
+        var method = String(form.method || 'POST').toUpperCase();
+        if (method !== 'POST') form.method = 'POST';
+        var inputs = form.querySelectorAll ? form.querySelectorAll('input') : [];
+        for (var i = 0; i < inputs.length; i++) {
+          var name = String(inputs[i].name || '').toLowerCase();
+          if (name === 'inputcardno' || name === 'cardnumber' || name === 'cardno') {
+            inputs[i].value = String(inputs[i].value || '').replace(/\\D/g, '');
+          }
+        }
+        diag({ event: 'bank-post', action: pathOnly(action), webView: 'visible' });
+        form.submit();
+      }
       function holdBankForm(html) {
         var text = String(html || '');
         if (text.indexOf('bankFrmSubmit') < 0) {
@@ -209,6 +231,7 @@ export function buildPaynimoCheckoutHtml(
         holder.innerHTML = text;
         document.body.appendChild(holder);
         diag({ event: 'popup-write-form', formId: 'bankFrmSubmit', webView: 'visible' });
+        postBankForm(document.getElementById('bankFrmSubmit'));
       }
       function attachPopupNode(node) {
         if (!node || !node.nodeType) return node;
@@ -231,13 +254,8 @@ export function buildPaynimoCheckoutHtml(
           showInThisPage(href);
           return null;
         }
-        if (href.slice(0, 8).toLowerCase() === 'https://') {
-          notify('follow-get', { url: href });
-          return window;
-        }
         if (href.slice(0, 7).toLowerCase() === 'http://') {
           showInThisPage(href);
-          return window;
         }
         var popup = {
           closed: false,
@@ -264,33 +282,55 @@ export function buildPaynimoCheckoutHtml(
           return raw.slice(8).split('/')[0].split('?')[0].split('#')[0].split(':')[0].toLowerCase();
         }
         function noteLocation(next) {
-          var href = typeof next === 'string' ? next : '';
-          var host = hostOf(href);
+          var nextHref = typeof next === 'string' ? next : '';
+          popup.__selorgHref = nextHref;
+          var host = hostOf(nextHref);
           var checkoutHost = host === 'paynimo.com' || host.slice(-13) === '.paynimo.com';
-          // Card GET only. A paynimo.com URL is still the checkout. A second GET
-          // is ignored. bankFrmSubmit remains a POST in this page.
+          // Card gateway URLs are POST-only. Following them with a GET makes
+          // Worldline decline the card before 3-D Secure, so the OTP page never starts.
+          if (isCardGatewayPostUrl(nextHref)) {
+            diag({
+              event: 'popup-location',
+              url: pathOnly(nextHref),
+              method: 'GET',
+              followed: false,
+              reason: 'card-post',
+              webView: 'visible'
+            });
+            return;
+          }
+          // One issuer GET (the ACS / OTP page). paynimo.com stays the checkout document
+          // so its in-page OTP modal is not replaced. A bank form POST cancels this.
           var follow = !!host && !checkoutHost && !popup.__selorgFollowed;
           if (follow) popup.__selorgFollowed = true;
           diag({
             event: 'popup-location',
-            url: pathOnly(href),
+            url: pathOnly(nextHref),
             method: 'GET',
-            hasQuery: href.indexOf('?') >= 0,
+            hasQuery: nextHref.indexOf('?') >= 0,
             followed: follow,
             webView: 'visible'
           });
-          if (follow) notify('follow-get', { url: href });
+          if (!follow) return;
+          var scheduled = nextHref;
+          setTimeout(function () {
+            if (document.getElementById('bankFrmSubmit')) {
+              diag({ event: 'follow-get-cancelled', reason: 'bank-form' });
+              return;
+            }
+            window.__selorgHandoff = true;
+            notify('follow-get', { url: scheduled });
+          }, 80);
         }
-        function hrefCall(next) { noteLocation(next); }
         var locationHooks = { assign: noteLocation, replace: noteLocation };
         try {
           Object.defineProperty(locationHooks, 'href', {
             configurable: true,
-            get: function () { return hrefCall; },
+            get: function () { return popup.__selorgHref || ''; },
             set: noteLocation
           });
         } catch (e) {
-          locationHooks.href = hrefCall;
+          locationHooks.href = '';
         }
         try {
           Object.defineProperty(popup, 'location', {
@@ -301,6 +341,7 @@ export function buildPaynimoCheckoutHtml(
         } catch (e) {
           popup.location = locationHooks;
         }
+        if (href.slice(0, 8).toLowerCase() === 'https://') noteLocation(href);
         return popup;
       };
       payload.consumerData.responseHandler = function (res) {

@@ -23,7 +23,7 @@ import {
   shouldRecoverBlankGatewayPage,
   type BlankGatewayRecovery,
 } from '../utils/checkoutNavigation';
-import { isWorldlineReturnUrl } from '../utils/worldline';
+import { gatewayStatusCode, hostedGatewayDecision, isWorldlineReturnUrl } from '../utils/worldline';
 
 export interface GatewayCloseInfo {
   bankAuthenticationStarted: boolean;
@@ -99,6 +99,11 @@ const GATEWAY_DOCUMENT_JS = `(function () {
       || /\\/worldline\\/return\\/?$/i.test(path)
       || /\\/paynimo-return(?:\\.html)?\\/?$/i.test(path);
   }
+  function cardPost(url) {
+    var raw = String(url || '').toLowerCase();
+    if (raw.indexOf('txnreq') >= 0) return true;
+    return raw.indexOf('paymentgateway') >= 0 && raw.indexOf('.pg') >= 0;
+  }
   function retarget(form) {
     if (!form || !form.tagName) return;
     var target = String(form.target || '').toLowerCase();
@@ -120,10 +125,14 @@ const GATEWAY_DOCUMENT_JS = `(function () {
     var nativeOpen = window.open;
     window.open = function (url) {
       var href = typeof url === 'string' ? url : '';
+      if (cardPost(href)) {
+        notify('diag', { event: 'window-open-ignored', reason: 'card-post' });
+        return { closed: false, focus: function () {}, close: function () {}, document: { write: function () {}, open: function () {}, close: function () {} } };
+      }
       if (href && /^https?:/i.test(href)) {
         notify('follow-get', { url: href });
         try { window.location.assign(href); } catch (e) {}
-        return window;
+        return { closed: false, focus: function () {}, close: function () {}, document: { write: function () {}, open: function () {}, close: function () {} } };
       }
       if (nativeOpen) return nativeOpen.apply(window, arguments);
       return null;
@@ -306,6 +315,7 @@ export default function WorldlineCheckoutWebView({
       blankTimer.current = null;
     }
     notifyProgress();
+    logNav('auth-started', raw, { via });
     setGatewayUrl(raw);
   };
 
@@ -393,15 +403,18 @@ export default function WorldlineCheckoutWebView({
     [finishReturn, logNav, markProgress],
   );
 
-  const handleClose = () => {
+  const handleClose = useCallback(() => {
     if (completed.current) return;
+    logNav('close', latestPageUrl.current, {
+      bankAuthenticationStarted: bankAuthStarted.current,
+    });
     onCancel({ bankAuthenticationStarted: bankAuthStarted.current });
-  };
+  }, [logNav, onCancel]);
 
   if (!source) return null;
 
   return (
-    <Modal visible={visible} animationType="slide" onRequestClose={handleClose}>
+    <Modal visible={visible} animationType="fade" onRequestClose={handleClose}>
       <View style={styles.header}>
         <Pressable
           onPress={handleClose}
@@ -540,6 +553,20 @@ export default function WorldlineCheckoutWebView({
               logNav(msg.type === 'opened' ? 'checkout-opened' : 'checkout-error', '');
             }
             if (msg?.type === 'gateway' && msg.detail && !completed.current) {
+              const detail = msg.detail as Record<string, unknown>;
+              const decision = hostedGatewayDecision(
+                detail,
+                bankAuthStarted.current || !!gatewayUrlRef.current,
+              );
+              logNav('gateway-message', '', {
+                decision,
+                statusCode: gatewayStatusCode(detail),
+              });
+              if (decision === 'keep_open') {
+                notifyProgress();
+                return;
+              }
+              if (decision !== 'complete') return;
               completed.current = true;
               if (blankTimer.current) clearTimeout(blankTimer.current);
               if (probeTimer.current) {
@@ -547,7 +574,8 @@ export default function WorldlineCheckoutWebView({
                 probeTimer.current = null;
               }
               setConfirming(true);
-              onComplete({ url: '', response: msg.detail as Record<string, unknown> });
+              logNav('auth-completed', '', { statusCode: gatewayStatusCode(detail) });
+              onComplete({ url: '', response: detail });
             }
           } catch {
             // ignore
