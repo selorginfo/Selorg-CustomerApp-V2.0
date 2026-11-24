@@ -12,6 +12,15 @@ import { Dimensions } from 'react-native';
 import { HomeBannerRail, nextPagerStep } from '../src/components/HomeBannerRail';
 import type { HomeBanner } from '../src/utils/homeResolve';
 
+jest.mock('react-native-video', () => {
+  const React = require('react');
+  const { View } = require('react-native');
+  const Video = React.forwardRef((props: object, ref: unknown) =>
+    React.createElement(View, { ...props, ref, testID: 'native-video' }),
+  );
+  return { __esModule: true, default: Video, ViewType: { TEXTURE: 'texture' } };
+});
+
 const banners: HomeBanner[] = [
   {
     _id: 'b1',
@@ -239,6 +248,7 @@ describe('home grid banner carousel', () => {
     expect(single!.root.findAllByType(Image).map(node => node.props.source?.uri)).toEqual([
       'https://cdn.example/moringa.webp',
     ]);
+    expect(textValues(single!)).not.toContain('Banner');
 
     let rail: ReactTestRenderer.ReactTestRenderer | undefined;
     await ReactTestRenderer.act(async () => {
@@ -258,9 +268,31 @@ describe('home grid banner carousel', () => {
     expect(urls.filter(uri => uri === 'https://cdn.example/a.webp').length).toBeGreaterThan(1);
     expect(rail!.root.findAllByProps({ testID: 'home-banner-carousel-banner_scroll-banner_ban-053_row' })).toHaveLength(0);
 
+    let videoPromo: ReactTestRenderer.ReactTestRenderer | undefined;
+    await ReactTestRenderer.act(async () => {
+      videoPromo = ReactTestRenderer.create(
+        <HomeBannerRail
+          sectionKey="banner_moringa"
+          items={[{
+            _id: 'mv',
+            bannerId: 'Ban-052',
+            title: 'Moringa Banner',
+            imageUrl: 'https://cdn.example/moringa.webp',
+            videoUrl: 'https://cdn.example/moringa.mp4',
+          }]}
+          onPress={jest.fn()}
+        />,
+      );
+    });
+    expect(textValues(videoPromo!)).toEqual([]);
+    expect(videoPromo!.root.findByProps({ testID: 'cms-video-own' })).toBeTruthy();
+    const preview = videoPromo!.root.findByProps({ testID: 'native-video' });
+    expect(preview.props.pointerEvents).toBe('none');
+
     await ReactTestRenderer.act(async () => {
       single!.unmount();
       rail!.unmount();
+      videoPromo!.unmount();
     });
   });
 });

@@ -1,7 +1,7 @@
 import React, { useRef } from 'react';
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Play } from 'lucide-react-native';
-import Video, { type VideoRef } from 'react-native-video';
+import Video, { ViewType, type VideoRef } from 'react-native-video';
 import { colors, fontFamily, radii } from '../theme';
 import type { VideoPlayback } from '../utils/videoUrl';
 import { splitMediaSources, youTubeThumbnailUrl } from '../utils/youtube';
@@ -16,11 +16,14 @@ export function CmsVideoCard({
   videoUrl,
   youtubeUrl,
   playback,
+  showTitle = true,
 }: {
   title: string;
   videoUrl?: string | null;
   youtubeUrl?: string | null;
   playback?: VideoPlayback;
+  /** Home promo videos already carry their copy in the creative. */
+  showTitle?: boolean;
 }) {
   const { ownUrl, youtubeId } = splitMediaSources({ videoUrl, youtubeUrl });
   const open = useVideoPlayer();
@@ -42,34 +45,40 @@ export function CmsVideoCard({
     <View style={styles.wrap} testID="cms-video-card">
       {ownUrl ? (
         <View>
-          <View style={styles.titleBar}>
-            <Text style={styles.title} numberOfLines={1}>
-              {title}
-            </Text>
-          </View>
-          <Pressable
-            style={styles.stage}
-            onPress={() => play('own')}
-            accessibilityRole="button"
-            accessibilityLabel={`Play ${title} video`}
-            testID="cms-video-own"
-          >
+          {showTitle ? (
+            <View style={styles.titleBar}>
+              <Text style={styles.title} numberOfLines={1}>
+                {title}
+              </Text>
+            </View>
+          ) : null}
+          <View style={styles.stage}>
             <Video
               ref={previewRef}
               source={{ uri: ownUrl }}
               style={styles.fill}
               resizeMode="cover"
+              viewType={ViewType.TEXTURE}
               paused
               muted
               repeat={false}
               playInBackground={false}
               playWhenInactive={false}
+              pointerEvents="none"
               onLoad={() => previewRef.current?.seek(0.1)}
             />
-            <View style={styles.playBadge} pointerEvents="none">
-              <Play size={20} color={colors.primary} fill={colors.primary} />
-            </View>
-          </Pressable>
+            <Pressable
+              style={styles.hit}
+              onPress={() => play('own')}
+              accessibilityRole="button"
+              accessibilityLabel={`Play ${title} video`}
+              testID="cms-video-own"
+            >
+              <View style={styles.playBadge} pointerEvents="none">
+                <Play size={20} color={colors.primary} fill={colors.primary} />
+              </View>
+            </Pressable>
+          </View>
         </View>
       ) : null}
 
@@ -111,6 +120,11 @@ const styles = StyleSheet.create({
     width: '100%',
     aspectRatio: 16 / 9,
     backgroundColor: colors.primaryDark,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  hit: {
+    ...StyleSheet.absoluteFillObject,
     alignItems: 'center',
     justifyContent: 'center',
   },

@@ -1,6 +1,6 @@
 import React from 'react';
 import ReactTestRenderer from 'react-test-renderer';
-import { Image } from 'react-native';
+import { Image, Text } from 'react-native';
 import { CategoryMediaHeader } from '../src/components/CategoryMediaHeader';
 import { CmsVideoCard } from '../src/components/CmsVideoCard';
 import { VideoPlayerProvider } from '../src/components/VideoPlayerHost';
@@ -65,6 +65,30 @@ describe('cms video card', () => {
       tree.root.findByProps({ testID: 'cms-video-own' }).props.onPress();
     });
     expect(tree.root.findByProps({ testID: 'video-minimize' })).toBeTruthy();
+  });
+
+  it('drops the home tag line and opens playback from a tap on the preview', async () => {
+    const tree = await render(
+      <VideoPlayerProvider>
+        <CmsVideoCard title="Banner" videoUrl="https://cdn.example/moringa.mp4" showTitle={false} />
+      </VideoPlayerProvider>,
+    );
+
+    const labels = tree.root.findAllByType(Text).map(node => String(node.props.children ?? ''));
+    expect(labels).not.toContain('Banner');
+    const preview = tree.root.findAllByProps({ testID: 'native-video' })[0];
+    expect(preview.props.pointerEvents).toBe('none');
+    expect(preview.props.viewType).toBe('texture');
+
+    await ReactTestRenderer.act(async () => {
+      tree.root.findByProps({ testID: 'cms-video-own' }).props.onPress();
+    });
+
+    const playing = tree.root
+      .findAllByProps({ testID: 'native-video' })
+      .find(node => node.props.paused === false);
+    expect(playing?.props.viewType).toBe('texture');
+    expect(tree.root.findByProps({ testID: 'video-player-dock' })).toBeTruthy();
   });
 });
 

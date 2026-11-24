@@ -333,7 +333,8 @@ export function HomeBannerRail({
       : strip
         ? Math.round(contentW / 3.4)
         : Math.round(contentW / 2.2);
-    const videoTitle = (banner.title || '').trim().replace(/\s+banner$/i, '') || 'Banner';
+    const namedTitle = (banner.title || '').trim().replace(/\s+banner$/i, '');
+    const videoTitle = namedTitle && namedTitle.toLowerCase() !== 'banner' ? namedTitle : 'Video';
 
     return (
       <View style={styles.section} testID={`home-banners-${sectionKey}`} onLayout={e => setRowW(e.nativeEvent.layout.width)}>
@@ -370,6 +371,7 @@ export function HomeBannerRail({
               title={videoTitle}
               videoUrl={linkedVideo}
               playback={banner.videoPlayback}
+              showTitle={false}
             />
           </View>
         ) : null}

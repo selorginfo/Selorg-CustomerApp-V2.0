@@ -1,7 +1,7 @@
 import React, { createContext, useCallback, useContext, useState } from 'react';
 import { Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { Maximize2, Minus, Minimize2, X } from 'lucide-react-native';
-import Video from 'react-native-video';
+import Video, { ViewType } from 'react-native-video';
 import { WebView } from 'react-native-webview';
 import { colors, fontFamily } from '../theme';
 import type { VideoPlayback } from '../utils/videoUrl';
@@ -120,6 +120,7 @@ export function VideoPlayerProvider({ children }: { children: React.ReactNode })
                   source={{ uri: video.ownUrl }}
                   style={styles.fill}
                   resizeMode="contain"
+                  viewType={ViewType.TEXTURE}
                   controls={video.playback?.controls !== false}
                   paused={false}
                   repeat={Boolean(video.playback?.loop)}
