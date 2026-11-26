@@ -49,6 +49,15 @@
 
 -keepattributes *Annotation*
 
+# --- Paynimo checkout SDK (react-native-weipl-checkout) ---
+-keep class com.weipl.checkout.** { *; }
+-keep class com.weiplcheckout.** { *; }
+-keepclassmembers class * {
+    @android.webkit.JavascriptInterface <methods>;
+}
+# Paynimo's optional eSign add-on, not shipped in this app.
+-dontwarn com.nsdl.egov.esignaar.**
+
 # --- PDFBox ---
 -dontwarn com.tom_roush.pdfbox.**
 

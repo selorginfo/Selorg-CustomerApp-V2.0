@@ -96,7 +96,13 @@ export default function RootNavigator() {
       }}
     >
       <Stack.Navigator
-        screenOptions={{ headerShown: false, contentStyle: { backgroundColor: '#FFFFFF' } }}
+        // Covered screens (Home's product grids) otherwise re-render on every cart/order
+        // context change, which stalls the JS thread while Paynimo is opening or returning.
+        screenOptions={{
+          headerShown: false,
+          contentStyle: { backgroundColor: '#FFFFFF' },
+          freezeOnBlur: true,
+        }}
         initialRouteName="Splash"
       >
         <Stack.Screen name="Splash" component={SplashScreen} />

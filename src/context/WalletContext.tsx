@@ -98,7 +98,7 @@ interface WalletContextType {
 
   completeTopUp: (returnUrlOrResponse: string | Record<string, unknown>) => Promise<boolean>;
 
-  cancelTopUp: (info?: { bankAuthenticationStarted?: boolean }) => Promise<GatewayDismissAction>;
+  cancelTopUp: (info?: { bankAuthenticationStarted?: boolean; message?: string }) => Promise<GatewayDismissAction>;
 
   topUpSessionPayload: Record<string, unknown> | null;
 
@@ -394,7 +394,7 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({ children }) 
 
   const cancelTopUp = useCallback(
 
-    async (info?: { bankAuthenticationStarted?: boolean }): Promise<GatewayDismissAction> => {
+    async (info?: { bankAuthenticationStarted?: boolean; message?: string }): Promise<GatewayDismissAction> => {
 
       const orderId = pendingTopUpOrderId;
 
@@ -466,7 +466,8 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({ children }) 
 
       } else {
 
-        showToast('Top-up cancelled. No money was added.', 'info');
+        const reason = info?.message?.replace(/[\s.]+$/, '');
+        showToast(reason ? `${reason}. No money was added.` : 'Top-up cancelled. No money was added.', 'info');
 
       }
 

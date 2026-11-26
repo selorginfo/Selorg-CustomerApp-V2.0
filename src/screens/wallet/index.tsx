@@ -8,7 +8,7 @@ import { BottomSheet, Header, Icon, ScreenContainer, StateView } from '../../com
 import type { IconName } from '../../components';
 import { colors, fontFamily, radii, spacing } from '../../theme';
 import { formatCurrency } from '../../utils/format';
-import WorldlineCheckoutWebView from '../../components/WorldlineCheckoutWebView';
+import WorldlineCheckout from '../../components/WorldlineCheckout';
 import { watchWorldlineStatus } from '../../utils/worldlineStatusWatch';
 
 const TOPUP_PRESETS = [100, 250, 500];
@@ -327,7 +327,7 @@ export default function WalletScreen() {
       </BottomSheet>
 
       {topUpSessionPayload ? (
-        <WorldlineCheckoutWebView
+        <WorldlineCheckout
           visible
           sessionPayload={topUpSessionPayload}
           cancelTestID="wallet-cancel"

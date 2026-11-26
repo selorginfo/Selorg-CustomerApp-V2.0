@@ -33,7 +33,10 @@ describe('Paynimo checkout instruments', () => {
     const html = buildPaynimoCheckoutHtml(session, { paymentMode: 'all' });
     const payload = payloadOf(html);
     expect(payload.paymentMode).toBe('all');
+    expect(payload.features?.enableAbortResponse).toBe(true);
+    expect(payload.features?.enableMerTxnDetails).toBe(true);
     expect(payload.features?.enableExpressPay).toBe(false);
+    expect(payload.features?.enableInstrumentDeRegistration).toBe(false);
     expect(payload.features?.enableNewWindowFlow).toBe(false);
     expect(payload.features?.enableTopWindowRedirection).toBe(false);
     expect(payload.features?.singleBankForceRedirect).toBe(false);

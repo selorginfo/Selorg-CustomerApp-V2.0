@@ -23,10 +23,17 @@ import {
   shouldRecoverBlankGatewayPage,
   type BlankGatewayRecovery,
 } from '../utils/checkoutNavigation';
-import { gatewayStatusCode, hostedGatewayDecision, isWorldlineReturnUrl } from '../utils/worldline';
+import {
+  gatewayStatusCode,
+  hostedGatewayDecision,
+  isWorldlineReturnUrl,
+  shouldCompleteAfterReturnSignal,
+} from '../utils/worldline';
 
 export interface GatewayCloseInfo {
   bankAuthenticationStarted: boolean;
+  /** Paynimo SDK's reason when it closed without a signed result. */
+  message?: string;
 }
 
 export interface GatewayProgressInfo {
@@ -109,7 +116,9 @@ const GATEWAY_DOCUMENT_JS = `(function () {
     var target = String(form.target || '').toLowerCase();
     if (!target || target === '_blank' || target === '_new' || target === 'bankwindow') form.target = '_self';
     var action = form.action || form.getAttribute('action') || '';
-    if (isReturn(action)) notify('return-nav', { url: String(action) });
+    // Do NOT complete the app here. Notifying return-nav on submit used to unmount
+    // the WebView before the POST body reached /worldline/return (rawGatewayReturn null).
+    if (isReturn(action)) notify('return-post-started', { url: String(action) });
   }
   document.addEventListener('submit', function (ev) { retarget(ev.target); }, true);
   if (window.HTMLFormElement && !HTMLFormElement.prototype.__selorgBlankTarget) {
@@ -171,9 +180,13 @@ export default function WorldlineCheckoutWebView({
   const latestTextLength = useRef(0);
   const gatewayUrlRef = useRef<string | null>(null);
   const progressNotified = useRef(false);
+  /** Merchant return POST is in flight — keep WebView mounted until load-end / bridge. */
+  const returnPostInFlight = useRef(false);
   const webRef = useRef<WebView<{}>>(null);
   const blankTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const probeTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+  const returnPostFallbackTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const finishReturnRef = useRef<(url: string) => void>(() => {});
   const viewId = useRef(`wv-${Date.now().toString(36)}`).current;
   const [gatewayUrl, setGatewayUrl] = useState<string | null>(null);
 
@@ -246,7 +259,9 @@ export default function WorldlineCheckoutWebView({
       latestPageUrl.current = '';
       latestTextLength.current = 0;
       progressNotified.current = false;
+      returnPostInFlight.current = false;
       if (blankTimer.current) clearTimeout(blankTimer.current);
+      if (returnPostFallbackTimer.current) clearTimeout(returnPostFallbackTimer.current);
       gatewayUrlRef.current = null;
       setGatewayUrl(null);
       setLoading(true);
@@ -254,6 +269,7 @@ export default function WorldlineCheckoutWebView({
       setLoadError('');
     } else {
       if (blankTimer.current) clearTimeout(blankTimer.current);
+      if (returnPostFallbackTimer.current) clearTimeout(returnPostFallbackTimer.current);
       if (probeTimer.current) clearInterval(probeTimer.current);
     }
   }, [visible, sessionPayload, redirectUrl]);
@@ -319,6 +335,22 @@ export default function WorldlineCheckoutWebView({
     setGatewayUrl(raw);
   };
 
+  const markReturnPostStarted = useCallback((url: string) => {
+    if (completed.current) return;
+    returnPostInFlight.current = true;
+    setConfirming(true);
+    logNav('return-post-started', url);
+    if (returnPostFallbackTimer.current) clearTimeout(returnPostFallbackTimer.current);
+    // If load-end / bridge never arrives (rare network drop), still poll status —
+    // but only after giving the POST enough time to reach the API.
+    returnPostFallbackTimer.current = setTimeout(() => {
+      returnPostFallbackTimer.current = null;
+      if (completed.current) return;
+      logNav('return-post-fallback', url);
+      finishReturnRef.current(url || latestPageUrl.current);
+    }, 20000);
+  }, [logNav]);
+
   const finishReturn = useCallback(
     (url: string) => {
       if (completed.current) return;
@@ -326,7 +358,12 @@ export default function WorldlineCheckoutWebView({
       // decided by /worldline/status, not by this URL.
       if (!isWorldlineReturnUrl(url) && !isPaymentResultHandoffUrl(url)) return;
       completed.current = true;
+      returnPostInFlight.current = false;
       if (blankTimer.current) clearTimeout(blankTimer.current);
+      if (returnPostFallbackTimer.current) {
+        clearTimeout(returnPostFallbackTimer.current);
+        returnPostFallbackTimer.current = null;
+      }
       if (probeTimer.current) {
         clearInterval(probeTimer.current);
         probeTimer.current = null;
@@ -336,6 +373,7 @@ export default function WorldlineCheckoutWebView({
     },
     [onComplete],
   );
+  finishReturnRef.current = finishReturn;
 
   const recoverBlankPage = useCallback(
     (url: string, textLength: number) => {
@@ -367,19 +405,21 @@ export default function WorldlineCheckoutWebView({
         if (blankTimer.current) {
           clearTimeout(blankTimer.current);
           blankTimer.current = null;
-          setConfirming(false);
+          if (!returnPostInFlight.current) setConfirming(false);
         }
         return;
       }
+      // Never tear down while the merchant return POST is still delivering msg=0300.
+      if (returnPostInFlight.current || isWorldlineReturnUrl(url)) return;
       if (blankTimer.current) return;
       notifyProgress();
       // shouldRecover already waited out the empty document. One short beat
       // so a redirect that is about to paint can still cancel this.
       blankTimer.current = setTimeout(() => {
         blankTimer.current = null;
-        if (completed.current) return;
+        if (completed.current || returnPostInFlight.current) return;
         const currentUrl = latestPageUrl.current;
-        if (isIssuerAuthenticationUrl(currentUrl)) return;
+        if (isIssuerAuthenticationUrl(currentUrl) || isWorldlineReturnUrl(currentUrl)) return;
         if (!shouldRecoverBlankGatewayPage(currentUrl, latestTextLength.current, recoveryProgress())) return;
         completed.current = true;
         if (probeTimer.current) {
@@ -533,13 +573,24 @@ export default function WorldlineCheckoutWebView({
             if (msg?.type === 'page') {
               const textLength = Number(msg.detail?.textLength);
               const pageUrl = String(msg.detail?.url || '');
-              if (msg.detail?.returnHit || msg.detail?.bridge) {
+              const bridge = !!msg.detail?.bridge;
+              // Bare returnHit means navigation started — keep WebView alive for the POST.
+              if (msg.detail?.returnHit && !bridge) {
+                markReturnPostStarted(pageUrl);
+              }
+              if (shouldCompleteAfterReturnSignal({ kind: 'page-probe', bridge })) {
                 finishReturn(pageUrl || 'https://www.selorg.com/checkout/payment?paynimo_bridge=1');
               }
               if (Number.isFinite(textLength)) recoverBlankPage(pageUrl, textLength);
             }
+            if (msg?.type === 'return-post-started') {
+              markReturnPostStarted(String(msg.detail?.url || ''));
+            }
             if (msg?.type === 'return-nav') {
-              finishReturn(String(msg.detail?.url || ''));
+              // Fired by API bridge HTML after processGatewayReturn — POST already stored.
+              if (shouldCompleteAfterReturnSignal({ kind: 'return-nav' })) {
+                finishReturn(String(msg.detail?.url || latestPageUrl.current || ''));
+              }
             }
             if (msg?.type === 'follow-get') {
               followGateway(String(msg.detail?.url || ''), 'popup-location');

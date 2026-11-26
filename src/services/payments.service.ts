@@ -46,11 +46,45 @@ export interface WorldlineStatus {
   purpose?: string;
   walletCredited?: boolean;
   recommendedAction?: string;
+  latestPayment?: {
+    txnId?: string;
+    status?: string;
+    verificationError?: string;
+    attemptNo?: number;
+  } | null;
+  allAttempts?: Array<{
+    txnId?: string;
+    status?: string;
+    verificationError?: string;
+    attemptNo?: number;
+  }> | null;
   [key: string]: unknown;
 }
 
-const unwrap = <T,>(res: unknown): T =>
-  (res && typeof res === 'object' && 'data' in res ? (res as { data: T }).data : res) as T;
+const unwrap = <T,>(res: unknown): T => {
+  if (!res || typeof res !== 'object') return res as T;
+  let cur: unknown = res;
+  // Peel API envelopes `{ data: ... }` (and rare double wraps) until status fields appear.
+  for (let i = 0; i < 3; i += 1) {
+    if (!cur || typeof cur !== 'object' || Array.isArray(cur)) break;
+    const obj = cur as Record<string, unknown>;
+    if (
+      'orderPaymentStatus' in obj ||
+      'uiState' in obj ||
+      'latestPayment' in obj ||
+      'paymentId' in obj ||
+      'sessionPayload' in obj
+    ) {
+      return cur as T;
+    }
+    if ('data' in obj && obj.data != null) {
+      cur = obj.data;
+      continue;
+    }
+    break;
+  }
+  return cur as T;
+};
 
 export const paymentsApi = {
   listPaymentMethods: (): Promise<PaymentMethod[]> =>

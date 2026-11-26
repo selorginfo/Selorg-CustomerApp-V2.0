@@ -44,6 +44,8 @@ export type RootStackParamList = {
     txnId?: string;
     paidAmount?: number;
     paymentMethodLabel?: string;
+    /** Set when payment status already confirmed — do not show unpaid UI while order fetch lags. */
+    confirmedPaid?: boolean;
   };
 
   /** orderId of the order to track; falls back to the current active order. */

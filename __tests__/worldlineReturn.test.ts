@@ -8,12 +8,36 @@ import {
   retryWhileHeld,
   gatewayStatusCode,
   hostedGatewayDecision,
+  shouldCompleteAfterReturnSignal,
   shouldSubmitGatewayResponse,
   switchFromOnlineDecision,
+  worldlineFailureMessage,
+  worldlineFailureTitle,
 } from '../src/utils/worldline';
+
+describe('Worldline failure title', () => {
+  it('matches the failure message for declines, cancels and other failures', () => {
+    const titleFor = (paymentOutcome: string) =>
+      worldlineFailureTitle(worldlineFailureMessage({ paymentOutcome }));
+    expect(titleFor('DECLINED')).toBe('Payment declined');
+    expect(titleFor('USER_CANCELLED')).toBe('Payment cancelled');
+    expect(titleFor('ABORTED')).toBe('Payment cancelled');
+    expect(titleFor('FAILED')).toBe('Payment failed');
+    expect(worldlineFailureTitle('You cancelled the payment. No amount has been charged.')).toBe(
+      'Payment cancelled',
+    );
+  });
+});
 
 describe('Worldline return URL', () => {
   const apiReturn = 'https://api.selorg.com/api/v1/customer/payments/worldline/return';
+
+  it('does not complete the app on return-post-started (keeps WebView for POST body)', () => {
+    expect(shouldCompleteAfterReturnSignal({ kind: 'return-post-started' })).toBe(false);
+    expect(shouldCompleteAfterReturnSignal({ kind: 'page-probe', bridge: false })).toBe(false);
+    expect(shouldCompleteAfterReturnSignal({ kind: 'page-probe', bridge: true })).toBe(true);
+    expect(shouldCompleteAfterReturnSignal({ kind: 'return-nav' })).toBe(true);
+  });
 
   it('treats the merchant return as a callback even when the POST body is not in the query', () => {
     expect(isWorldlineReturnUrl(apiReturn)).toBe(true);
@@ -66,7 +90,48 @@ describe('payment status classification', () => {
       false,
     );
     expect(isWorldlineFailedStatus({ uiState: 'FAILED', paymentStatus: 'failed' })).toBe(true);
+    expect(isWorldlineFailedStatus({ paymentOutcome: 'DECLINED' })).toBe(true);
+    expect(isWorldlineFailedStatus({ paymentOutcome: 'FAILED' })).toBe(true);
+    expect(isWorldlineFailedStatus({ paymentStatus: 'declined' })).toBe(true);
     expect(isWorldlinePaidStatus({ uiState: 'PAID', orderPaymentStatus: 'paid' })).toBe(true);
+  });
+
+  it('treats orderPaymentStatus paid as success even when latest attempt ui is noisy', () => {
+    const statusResponse = {
+      orderPaymentStatus: 'paid',
+      paymentStatus: 'paid',
+      uiState: 'RETRY_AVAILABLE',
+      paymentOutcome: 'CANCELLED',
+      latestPayment: { status: 'cancelled', verificationError: 'none' },
+    };
+    expect(isWorldlinePaidStatus(statusResponse)).toBe(true);
+    expect(
+      isWorldlinePendingStatus({
+        orderPaymentStatus: 'paid',
+        uiState: 'PENDING_VERIFICATION',
+        paymentOutcome: 'PENDING',
+      }),
+    ).toBe(false);
+    expect(
+      isWorldlineFailedStatus({
+        orderPaymentStatus: 'paid',
+        uiState: 'RETRY_AVAILABLE',
+      }),
+    ).toBe(false);
+  });
+
+  it('treats a verified success attempt as paid even if a later retry failed', () => {
+    expect(
+      isWorldlinePaidStatus({
+        orderPaymentStatus: 'pending',
+        uiState: 'FAILED',
+        latestPayment: { status: 'failed', verificationError: 'none' },
+        allAttempts: [
+          { status: 'success', verificationError: 'none' },
+          { status: 'failed', verificationError: 'none' },
+        ],
+      }),
+    ).toBe(true);
   });
 
   it('blocks COD while verification is unknown so a debit is not cancelled', () => {
@@ -157,6 +222,19 @@ describe('hosted checkout responseHandler', () => {
     expect(hostedGatewayDecision(detail, true)).toBe('keep_open');
     expect(hostedGatewayDecision({ statusCode: '0398' }, true)).toBe('keep_open');
     expect(hostedGatewayDecision({ statusCode: '0396' }, false)).toBe('keep_open');
+  });
+
+  it('maps official Android msg pipe txn_status codes (0300/0398/0399/0396/0392)', () => {
+    expect(gatewayStatusCode({ msg: '0300|success|NA|txn|1|2|10.00' })).toBe('0300');
+    expect(gatewayStatusCode({ msg: '0398|Initiated|NA|txn|1|2|10.00' })).toBe('0398');
+    expect(gatewayStatusCode({ msg: '0399|FAILED|declined|txn|1|2|10.00' })).toBe('0399');
+    expect(gatewayStatusCode({ msg: '0396|Awaited|NA|txn|1|2|10.00' })).toBe('0396');
+    expect(gatewayStatusCode({ msg: '0392|User Aborted|aborted|txn|1|2|10.00' })).toBe('0392');
+    expect(hostedGatewayDecision({ msg: '0398|Initiated|NA|txn|1|2|10.00' }, true)).toBe('keep_open');
+    expect(hostedGatewayDecision({ msg: '0396|Awaited|NA|txn|1|2|10.00' }, true)).toBe('keep_open');
+    expect(hostedGatewayDecision({ msg: '0300|success|NA|txn|1|2|10.00' }, true)).toBe('complete');
+    expect(hostedGatewayDecision({ msg: '0392|User Aborted|aborted|txn|1|2|10.00' }, true)).toBe('complete');
+    expect(hostedGatewayDecision({ msg: '0399|FAILED|declined|txn|1|2|10.00' }, true)).toBe('complete');
   });
 
   it('completes on a verified success or a cancel before the bank page', () => {

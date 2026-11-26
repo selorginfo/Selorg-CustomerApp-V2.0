@@ -80,6 +80,33 @@ export function isWorldlineReturnUrl(url: string): boolean {
 }
 
 /**
+ * When the WebView may close after a card return.
+ * - Form submit / bare return-path probes fire before the POST body reaches the API.
+ * - Closing then cancels the request → rawGatewayReturn stays null (Android stuck state).
+ * - Complete only after the API bridge document loads (`data-paynimo-bridge`) or load-end
+ *   on the return/handoff URL (POST already processed).
+ */
+export function shouldCompleteAfterReturnSignal(signal: {
+  kind: 'return-post-started' | 'return-nav' | 'page-probe';
+  bridge?: boolean;
+}): boolean {
+  if (signal.kind === 'return-post-started') return false;
+  if (signal.kind === 'page-probe') return !!signal.bridge;
+  // return-nav from the API HTML runs after processGatewayReturn stored the capture.
+  return signal.kind === 'return-nav';
+}
+
+/**
+ * Official Android/Web docs: first segment of pipe `msg` is txn_status
+ * (0300 / 0398 / 0399 / 0396 / 0392). Native Android callbacks often send only `{ msg }`.
+ */
+export function txnStatusFromPaynimoMsg(msg: unknown): string {
+  const raw = String(msg || '').trim();
+  if (!raw.includes('|')) return '';
+  return raw.split('|')[0]?.trim() || '';
+}
+
+/**
  * True only when the body still has gateway crypto fields to send to `/worldline/complete`.
  * A redirect or `paynimo_bridge` hint is not a capture. The app must poll `/worldline/status`.
  */
@@ -90,16 +117,25 @@ export function gatewayStatusCode(detail: Record<string, unknown> | null | undef
     method && typeof method === 'object'
       ? (method as { paymentTransaction?: { statusCode?: unknown } }).paymentTransaction?.statusCode
       : '';
-  return String(detail.statusCode || detail.txn_status || detail.txnStatus || nested || '').trim();
+  // Prefer explicit fields, then pipe msg (Android SDK / return POST shape).
+  return String(
+    detail.statusCode ||
+      detail.txn_status ||
+      detail.txnStatus ||
+      nested ||
+      txnStatusFromPaynimoMsg(detail.msg) ||
+      detail.error_code ||
+      '',
+  ).trim();
 }
 
 export type HostedGatewayDecision = 'ignore' | 'complete' | 'keep_open';
 
 /**
- * Paynimo's in-page responseHandler is not the issuer OTP result.
- * A bare 0399 fired while the card window is opening used to close the WebView
- * and mark the payment failed before 3-D Secure started.
- * A pipe `msg` or hash is a real gateway payload and may complete the flow.
+ * Paynimo docs status codes:
+ * 0300 Success, 0398 Initiated, 0399 Failure, 0396 Awaited, 0392 Aborted.
+ * In-page responseHandler is not the issuer OTP result — bare 0399 before a
+ * verified pipe used to close the WebView before 3-D Secure.
  */
 export function hostedGatewayDecision(
   detail: Record<string, unknown> | null | undefined,
@@ -110,9 +146,12 @@ export function hostedGatewayDecision(
   // statusCode alone is not a verified gateway body. A pipe msg or hash is.
   const hasPayload = String(detail.msg || '').includes('|') || String(detail.hash || '').trim().length > 0;
   if (!code && !hasPayload) return 'ignore';
+  // Official: Initiated / Awaited — keep checkout open and wait for final capture.
   if (code === '0396' || code === '0398') return 'keep_open';
-  if (handoffStarted && code !== '0300') return 'keep_open';
+  if (handoffStarted && code !== '0300' && !hasPayload) return 'keep_open';
+  if (handoffStarted && code !== '0300' && code !== '0392' && code !== '0399') return 'keep_open';
   if (code === '0399' && !hasPayload) return 'keep_open';
+  // Success, abort, or verified failure (pipe msg) — leave WebView and poll/verify on server.
   if (code === '0300' || code === '0392' || code === '0399' || hasPayload) return 'complete';
   return 'ignore';
 }
@@ -125,18 +164,50 @@ export function shouldSubmitGatewayResponse(response: Record<string, unknown> | 
   return false;
 }
 
+type WorldlineAttemptLike = {
+  status?: string;
+  verificationError?: string;
+};
+
+function attemptIsVerifiedSuccess(attempt: WorldlineAttemptLike | null | undefined): boolean {
+  if (!attempt || typeof attempt !== 'object') return false;
+  const st = String(attempt.status || '').toLowerCase();
+  const ve = String(attempt.verificationError || 'none').toLowerCase();
+  return st === 'success' && ve === 'none';
+}
+
+/**
+ * Paid when the order row is paid, ui says PAID, or any Worldline attempt is a
+ * verified success — even if a newer cancelled/failed retry made uiState noisy.
+ */
 export function isWorldlinePaidStatus(status: {
   paymentStatus?: string;
   status?: string;
   orderPaymentStatus?: string;
   uiState?: string;
   walletCredited?: boolean;
+  latestPayment?: WorldlineAttemptLike | null;
+  allAttempts?: WorldlineAttemptLike[] | null;
 }): boolean {
-  const pay = String(status.paymentStatus || status.orderPaymentStatus || '').toLowerCase();
-  if (pay === 'failed' || pay === 'cancelled') return false;
-  if (status.walletCredited && pay !== 'pending') return true;
-  if (status.uiState === 'PAID') return true;
+  // Order payment status is the source of truth across Web / Mobile / Admin.
+  const orderPay = String(status.orderPaymentStatus || '').toLowerCase();
+  if (orderPay === 'paid') return true;
+
+  const pay = String(status.paymentStatus || '').toLowerCase();
   if (pay === 'paid') return true;
+  // Do not treat order-level failed as paid; gateway success on a failed order is handled by refunds.
+  if (pay === 'failed' || pay === 'cancelled' || orderPay === 'failed' || orderPay === 'cancelled') {
+    return false;
+  }
+
+  if (status.walletCredited && pay !== 'pending' && orderPay !== 'pending') return true;
+  if (String(status.uiState || '').toUpperCase() === 'PAID') return true;
+
+  if (attemptIsVerifiedSuccess(status.latestPayment || undefined)) return true;
+  if (Array.isArray(status.allAttempts) && status.allAttempts.some(attemptIsVerifiedSuccess)) {
+    return true;
+  }
+
   const st = String(status.status || '').toLowerCase();
   return st === 'success' || st === 'paid';
 }
@@ -144,8 +215,16 @@ export function isWorldlinePaidStatus(status: {
 export function isWorldlinePendingStatus(status: {
   uiState?: string;
   paymentStatus?: string;
+  orderPaymentStatus?: string;
   paymentOutcome?: string;
+  latestPayment?: WorldlineAttemptLike | null;
+  allAttempts?: WorldlineAttemptLike[] | null;
+  walletCredited?: boolean;
+  status?: string;
 }): boolean {
+  // Never keep polling as "pending" once capture is confirmed.
+  if (isWorldlinePaidStatus(status)) return false;
+
   const outcome = String(status.paymentOutcome || '').toUpperCase();
   if (
     outcome === 'PENDING' ||
@@ -164,15 +243,65 @@ export function isWorldlineFailedStatus(status: {
   orderPaymentStatus?: string;
   uiState?: string;
   paymentOutcome?: string;
+  latestPayment?: WorldlineAttemptLike | null;
+  allAttempts?: WorldlineAttemptLike[] | null;
+  walletCredited?: boolean;
+  status?: string;
 }): boolean {
   // Timeout / pending outcomes are not declines — keep reconciling.
   if (isWorldlinePendingStatus(status) || isWorldlinePaidStatus(status)) return false;
   const outcome = String(status.paymentOutcome || '').toUpperCase();
-  if (outcome === 'TIMEOUT' || outcome === 'PENDING') return false;
+  if (outcome === 'TIMEOUT' || outcome === 'PENDING' || outcome === 'INITIATED' || outcome === 'AWAITING_PAYMENT') {
+    return false;
+  }
+  // Bank decline / hard fail / cancel — leave verifying UI.
+  if (
+    outcome === 'FAILED' ||
+    outcome === 'DECLINED' ||
+    outcome === 'CANCELLED' ||
+    outcome === 'CANCELED' ||
+    outcome === 'USER_CANCELLED' ||
+    outcome === 'ABORTED'
+  ) {
+    return true;
+  }
   const ui = String(status.uiState || '').toUpperCase();
   if (ui === 'FAILED' || ui === 'RETRY_AVAILABLE') return true;
-  const pay = String(status.paymentStatus || status.orderPaymentStatus || '').toLowerCase();
-  return pay === 'failed';
+  const pay = String(status.orderPaymentStatus || status.paymentStatus || status.status || '').toLowerCase();
+  return (
+    pay === 'failed' ||
+    pay === 'declined' ||
+    pay === 'cancelled' ||
+    pay === 'canceled'
+  );
+}
+
+/** User-facing copy for a terminal Worldline failure / decline. */
+export function worldlineFailureMessage(status?: {
+  paymentOutcome?: string;
+  uiState?: string;
+  paymentStatus?: string;
+  orderPaymentStatus?: string;
+  status?: string;
+} | null): string {
+  const outcome = String(status?.paymentOutcome || '').toUpperCase();
+  const pay = String(
+    status?.orderPaymentStatus || status?.paymentStatus || status?.status || '',
+  ).toLowerCase();
+  if (outcome === 'DECLINED' || pay === 'declined') {
+    return 'Payment declined by the bank. No amount was charged. You can try again or choose another method.';
+  }
+  if (outcome === 'USER_CANCELLED' || outcome === 'CANCELLED' || outcome === 'CANCELED' || outcome === 'ABORTED') {
+    return 'Payment was cancelled. No amount was charged.';
+  }
+  return 'Payment failed. No amount was charged. You can retry or choose another method.';
+}
+
+/** Result-screen title for a failure message, so every path that settles a failure shows the same one. */
+export function worldlineFailureTitle(message: string): string {
+  if (/declined/i.test(message)) return 'Payment declined';
+  if (/cancelled/i.test(message)) return 'Payment cancelled';
+  return 'Payment failed';
 }
 
 export type GatewayDismissAction = 'finish_paid' | 'hold' | 'abort' | 'close_failed';

@@ -39,10 +39,15 @@ export function buildPaynimoCheckoutHtml(
       returnUrl: returnUrlForDevice(payload.consumerData?.returnUrl),
     };
   }
+  // Align with Paynimo Android online sample features (docs #online) where safe.
+  // enableExpressPay stays false — saved-instrument-only UI often renders empty in WebView.
+  // returnUrl stays set (hosted checkout.js requires it; native WLCheckoutActivity omits it).
   payload.features = {
     ...(payload.features || {}),
     enableAbortResponse: true,
+    enableMerTxnDetails: true,
     enableExpressPay: false,
+    enableInstrumentDeRegistration: false,
     enableNewWindowFlow: false,
     enableTopWindowRedirection: false,
     singleBankForceRedirect: false,
@@ -55,7 +60,7 @@ export function buildPaynimoCheckoutHtml(
 <html>
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+  <meta name="viewport" content="user-scalable=no, width=device-width, initial-scale=1" />
   <title>Secure Payment</title>
   <style>
     body { font-family: -apple-system, sans-serif; margin: 0; padding: 24px; background: #FFFFFF; color: #2a3326; }
@@ -344,13 +349,27 @@ export function buildPaynimoCheckoutHtml(
         if (href.slice(0, 8).toLowerCase() === 'https://') noteLocation(href);
         return popup;
       };
+      // Docs: responseHandler (hosted) / wlCheckoutPaymentResponse (Android).
+      // Handle statusCode 0300/0398/0399/0396/0392 and pipe msg dual-verify payload.
       payload.consumerData.responseHandler = function (res) {
-        var txn = res && res.paymentMethod && res.paymentMethod.paymentTransaction;
-        var code = txn && txn.statusCode;
-        if (!code && !(res && res.msg)) return;
-        var safe = { statusCode: code || '', msg: (res && res.msg) || '' };
+        if (!res || typeof res !== 'object') return;
+        var txn = res.paymentMethod && res.paymentMethod.paymentTransaction;
+        var code = (txn && txn.statusCode) || res.statusCode || res.txn_status || res.error_code || '';
+        if (!code && typeof res.msg === 'string' && res.msg.indexOf('|') >= 0) {
+          code = String(res.msg).split('|')[0] || '';
+        }
+        if (!code && !res.msg && !res.hash) return;
+        var safe = {
+          statusCode: code || '',
+          msg: res.msg || '',
+          merchant_code: res.merchant_code || res.merchantCode || '',
+          error_code: res.error_code || '',
+          error_desc: res.error_desc || ''
+        };
         try { safe = JSON.parse(JSON.stringify(res)); } catch (e) {}
+        if (!safe.statusCode && code) safe.statusCode = code;
         notify('gateway', safe);
+        diag({ event: 'response-handler', statusCode: String(safe.statusCode || code || ''), hasMsg: !!(safe.msg || res.msg) });
       };
       var configPromise = fetch(CONFIG).then(function (res) {
         if (!res.ok) return null;

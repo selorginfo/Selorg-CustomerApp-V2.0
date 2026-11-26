@@ -115,7 +115,7 @@ export default function SettingsScreen() {
         </View>
 
         <PrimaryButton testID="settings-logout" label="Log out" onPress={() => setLogoutOpen(true)} kind="danger" />
-        <Text style={styles.versionLabel}>Selorg · v2.0.0</Text>
+        <Text style={styles.versionLabel}>Selorg · v2.1.2</Text>
       </ScrollView>
 
       <LogoutConfirmSheet

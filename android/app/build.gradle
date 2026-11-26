@@ -82,8 +82,8 @@ android {
         applicationId "com.selorg.com"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 5
-        versionName "2.0.0"
+        versionCode 11
+        versionName "2.1.2"
         // Release denies cleartext. The debug build type overrides this.
         manifestPlaceholders = [
             usesCleartextTraffic: "false",
@@ -230,11 +230,15 @@ android {
                     ? "selorg-customer-app-${version}-unsigned.aab"
                     : "selorg-customer-app-${version}.aab"
                 def aabDir = new File("${buildDir}/outputs/bundle/${variant.name}")
-                aabDir.listFiles()?.each { file ->
-                    if (file.name.endsWith(".aab")) {
-                        file.renameTo(new File(aabDir, aabName))
-                    }
+                // AGP writes app-<variant>.aab. Renaming every .aab in this folder
+                // lets an older selorg-customer-app-*.aab overwrite the new bundle.
+                def produced = new File(aabDir, "app-${variant.name}.aab")
+                if (!produced.isFile()) return
+                def target = new File(aabDir, aabName)
+                if (target.exists() && target.canonicalPath != produced.canonicalPath) {
+                    target.delete()
                 }
+                produced.renameTo(target)
             }
         }
     }

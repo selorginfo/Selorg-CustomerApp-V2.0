@@ -3,22 +3,32 @@ import { ActivityIndicator, AppState, Pressable, ScrollView, StyleSheet, Text, V
 import { useFocusEffect, useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import BillSummaryCard from '../../components/BillSummaryCard';
-import WorldlineCheckoutWebView, {
+import WorldlineCheckout, {
   type GatewayCloseInfo,
   type GatewayProgressInfo,
-} from '../../components/WorldlineCheckoutWebView';
-import { Header, Icon, PrimaryButton, ScreenContainer, StateView } from '../../components';
+} from '../../components/WorldlineCheckout';
+import { AnimatedIcon, Header, Icon, PrimaryButton, ScreenContainer } from '../../components';
 import type { IconName } from '../../components';
 import { colors, fontFamily, radii } from '../../theme';
 import { formatCurrency } from '../../utils/format';
 import { showToast } from '../../utils/toast';
-import { parseReturnUrl } from '../../utils/worldline';
+import {
+  isWorldlineFailedStatus,
+  isWorldlinePaidStatus,
+  parseReturnUrl,
+  shouldSubmitGatewayResponse,
+  worldlineFailureMessage,
+  worldlineFailureTitle,
+} from '../../utils/worldline';
 import { watchWorldlineStatus } from '../../utils/worldlineStatusWatch';
 import { onlineInterruptsMethod, resolvePayMethod } from '../../utils/paymentAttempt';
 import { useCart } from '../../context/CartContext';
 import { useOrders } from '../../context/OrdersContext';
 import type { PayMethod } from '../../context/OrdersContext';
 import { useWallet } from '../../context/WalletContext';
+import { ordersApi } from '../../services/orders.service';
+import { paymentsApi } from '../../services/payments.service';
+import { toLocalOrder } from '../../utils/mappers';
 import type { RootStackParamList } from '../../navigation/types';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -43,6 +53,7 @@ export default function PaymentScreen() {
     gatewaySessionPayload,
     pendingGatewayOrderId,
     completeGatewayPayment,
+    confirmPaidOrderIfReady,
     cancelGatewayPayment,
     activeOrder,
   } = useOrders();
@@ -53,7 +64,9 @@ export default function PaymentScreen() {
   const [unconfirmed, setUnconfirmed] = useState('');
   /** True while Worldline has not confirmed capture or decline — not a failure. */
   const [paymentPending, setPaymentPending] = useState(false);
+  const [checkingStatus, setCheckingStatus] = useState(false);
   const [openingResult, setOpeningResult] = useState(false);
+  const [failTitle, setFailTitle] = useState('Payment failed');
   const checkoutPayloadRef = useRef(gatewaySessionPayload);
   if (gatewaySessionPayload) checkoutPayloadRef.current = gatewaySessionPayload;
   const [checkoutMounted, setCheckoutMounted] = useState(false);
@@ -134,6 +147,7 @@ export default function PaymentScreen() {
                 txnId: receipt?.txnId || undefined,
                 paidAmount: receipt?.amount,
                 paymentMethodLabel: receipt?.paymentMethodLabel || 'Online',
+                confirmedPaid: true,
               },
             },
           ],
@@ -151,40 +165,154 @@ export default function PaymentScreen() {
     [navigation],
   );
 
+  const leaveProcessingForPaid = React.useCallback(
+    (orderId: string, receipt?: { txnId?: string | null; amount?: number }) => {
+      setUnconfirmed('');
+      setFailTitle('Payment failed');
+      setPaymentPending(false);
+      setPendingVerifyOrderId(null);
+      setGatewayWatching(false);
+      setOpeningResult(true);
+      goToOrderPlaced(orderId, {
+        txnId: receipt?.txnId,
+        amount: receipt?.amount,
+        paymentMethodLabel: 'Online',
+      });
+      void wallet.reloadWallet();
+    },
+    [goToOrderPlaced, wallet],
+  );
+
+  const leaveProcessingForFailed = React.useCallback((message: string, title = 'Payment failed') => {
+    setPaymentPending(false);
+    setPendingVerifyOrderId(null);
+    setGatewayWatching(false);
+    setOpeningResult(false);
+    setFailTitle(title);
+    setUnconfirmed(message);
+  }, []);
+
+  /** Prefer order/status truth over re-entering the long completeGatewayPayment loop. */
+  const exitIfAlreadyPaid = React.useCallback(
+    async (orderId: string): Promise<boolean> => {
+      try {
+        const ready = await confirmPaidOrderIfReady(orderId);
+        if (ready.success && ready.order) {
+          leaveProcessingForPaid(orderId, {
+            txnId: ready.gatewayTxnId,
+            amount: ready.order.totalBill,
+          });
+          return true;
+        }
+      } catch {
+        /* continue with direct lookups */
+      }
+      try {
+        const status = await paymentsApi.getWorldlineStatus(orderId, { timeoutMs: 12000 });
+        if (isWorldlinePaidStatus(status)) {
+          leaveProcessingForPaid(orderId, {
+            txnId: status.latestPayment?.txnId,
+          });
+          return true;
+        }
+      } catch {
+        /* ignore */
+      }
+      try {
+        const order = toLocalOrder(await ordersApi.getOrder(orderId));
+        const captured =
+          order.paymentStatus === 'paid' ||
+          ['confirmed', 'getting-packed', 'on-the-way', 'arrived', 'delivered'].includes(order.status);
+        if (captured) {
+          leaveProcessingForPaid(orderId, { amount: order.totalBill });
+          return true;
+        }
+      } catch {
+        /* ignore */
+      }
+      return false;
+    },
+    [confirmPaidOrderIfReady, leaveProcessingForPaid],
+  );
+
+  /** Terminal classification for verifying / Check status — paid, declined/failed, or still open. */
+  const classifyGatewayOutcome = React.useCallback(
+    async (orderId: string): Promise<'paid' | 'failed' | 'pending'> => {
+      if (await exitIfAlreadyPaid(orderId)) return 'paid';
+      try {
+        const status = await paymentsApi.getWorldlineStatus(orderId, { timeoutMs: 12000 });
+        if (isWorldlinePaidStatus(status)) {
+          leaveProcessingForPaid(orderId, { txnId: status.latestPayment?.txnId });
+          return 'paid';
+        }
+        if (isWorldlineFailedStatus(status)) {
+          const message = worldlineFailureMessage(status);
+          leaveProcessingForFailed(message, worldlineFailureTitle(message));
+          return 'failed';
+        }
+      } catch {
+        /* ignore */
+      }
+      try {
+        const order = toLocalOrder(await ordersApi.getOrder(orderId));
+        if (order.paymentStatus === 'failed') {
+          leaveProcessingForFailed(
+            'Payment failed. No amount was charged. You can retry or choose another method.',
+            'Payment failed',
+          );
+          return 'failed';
+        }
+      } catch {
+        /* ignore */
+      }
+      return 'pending';
+    },
+    [exitIfAlreadyPaid, leaveProcessingForPaid, leaveProcessingForFailed],
+  );
+
   const settleFromStatusWatch = React.useCallback(
-    async (orderId: string) => {
-      if (settlingRef.current) return;
+    async (orderId: string): Promise<'paid' | 'pending' | 'failed' | 'busy'> => {
+      if (settlingRef.current) {
+        const quick = await classifyGatewayOutcome(orderId);
+        if (quick === 'paid') return 'paid';
+        if (quick === 'failed') return 'failed';
+        return 'busy';
+      }
       settlingRef.current = true;
       watchAbortRef.current.aborted = true;
       try {
+        const classified = await classifyGatewayOutcome(orderId);
+        if (classified === 'paid') return 'paid';
+        if (classified === 'failed') return 'failed';
+
         const result = await completeGatewayPayment(orderId, '');
         if (result.success && result.order) {
-          setUnconfirmed('');
-          setPaymentPending(false);
-          setPendingVerifyOrderId(null);
-          goToOrderPlaced(result.order.id, {
+          leaveProcessingForPaid(result.order.id, {
             txnId: result.gatewayTxnId,
             amount: result.order.totalBill,
-            paymentMethodLabel: 'Online',
           });
-          void wallet.reloadWallet();
-          return;
+          return 'paid';
         }
+        const again = await classifyGatewayOutcome(orderId);
+        if (again === 'paid') return 'paid';
+        if (again === 'failed') return 'failed';
+
         if (result.pendingVerification) {
           setPaymentPending(true);
           setPendingVerifyOrderId(orderId);
           setUnconfirmed('');
-          return;
+          return 'pending';
         }
-        setPaymentPending(false);
-        setPendingVerifyOrderId(null);
-        setUnconfirmed(result.message || 'Payment was not completed. You can retry from checkout.');
+        leaveProcessingForFailed(
+          result.message || 'Payment failed. No amount was charged. You can retry or choose another method.',
+        );
+        return 'failed';
       } finally {
         settlingRef.current = false;
         setGatewayWatching(false);
       }
     },
-    [completeGatewayPayment, goToOrderPlaced, wallet],
+    [completeGatewayPayment, classifyGatewayOutcome, leaveProcessingForPaid, leaveProcessingForFailed],
   );
 
   // While Secure Payment is open after the card/bank page, poll server status.
@@ -198,17 +326,16 @@ export default function PaymentScreen() {
     watchAbortRef.current = signal;
     void (async () => {
       while (!signal.aborted) {
+        const classified = await classifyGatewayOutcome(orderId);
+        if (classified === 'paid' || classified === 'failed') return;
         const { outcome } = await watchWorldlineStatus({
           orderId,
-          initialDelayMs: 1200,
-          intervalMs: 2500,
-          maxAttempts: 40,
+          initialDelayMs: 800,
+          intervalMs: 2000,
+          maxAttempts: 30,
           signal,
         });
         if (signal.aborted) return;
-        // Only a verified capture or decline closes the WebView from this loop.
-        // Pending, timeout, and a blank document are not a failure — blank-page
-        // recovery calls onComplete, which shows Payment processing and keeps polling.
         if (outcome === 'paid' || outcome === 'failed') {
           await settleFromStatusWatch(orderId);
           return;
@@ -218,39 +345,77 @@ export default function PaymentScreen() {
     return () => {
       signal.aborted = true;
     };
-  }, [payState, gatewayWatching, pendingGatewayOrderId, settleFromStatusWatch]);
+  }, [payState, gatewayWatching, pendingGatewayOrderId, settleFromStatusWatch, classifyGatewayOutcome]);
 
-  // Keep reconciling after the WebView closes if the bank debit is still verifying.
+  const verifyingOrderId =
+    pendingVerifyOrderId || pendingGatewayOrderId || route.params?.orderId || null;
+  const showVerifyingUi =
+    method === 'online' &&
+    !openingResult &&
+    (paymentPending || (payState === 'processing' && !checkoutMounted)) &&
+    !!verifyingOrderId;
+
+  const runCheckPaymentStatus = React.useCallback(async () => {
+    const orderId = verifyingOrderId;
+    if (!orderId || checkingStatus) return;
+    setCheckingStatus(true);
+    try {
+      const classified = await classifyGatewayOutcome(orderId);
+      if (classified === 'paid' || classified === 'failed') return;
+      await settleFromStatusWatch(orderId);
+    } finally {
+      setCheckingStatus(false);
+    }
+  }, [verifyingOrderId, checkingStatus, classifyGatewayOutcome, settleFromStatusWatch]);
+
+  // After WebView closes: resolve to success OR failed/declined — never stay
+  // on verifying forever once the bank returns a terminal status.
   useEffect(() => {
-    if (!paymentPending || method !== 'online') return undefined;
-    const orderId = pendingVerifyOrderId || pendingGatewayOrderId || route.params?.orderId;
-    if (!orderId) return undefined;
+    if (!showVerifyingUi || !verifyingOrderId) return undefined;
+    const orderId = verifyingOrderId;
     const signal = { aborted: false };
     void (async () => {
+      const first = await classifyGatewayOutcome(orderId);
+      if (first === 'paid' || first === 'failed') return;
       while (!signal.aborted) {
-        const { outcome } = await watchWorldlineStatus({
+        const { outcome, status } = await watchWorldlineStatus({
           orderId,
-          initialDelayMs: 2000,
-          intervalMs: 4000,
-          maxAttempts: 20,
+          initialDelayMs: 500,
+          intervalMs: 2000,
+          maxAttempts: 45,
           signal,
         });
         if (signal.aborted) return;
-        await settleFromStatusWatch(orderId);
-        if (outcome === 'paid' || outcome === 'failed') return;
-        // Still pending — Worldline inquiry may confirm on the next pass.
+        if (outcome === 'paid') {
+          await settleFromStatusWatch(orderId);
+          return;
+        }
+        if (outcome === 'failed') {
+          const classified = await classifyGatewayOutcome(orderId);
+          if (classified === 'paid') return;
+          if (classified === 'failed') return;
+          leaveProcessingForFailed(
+            worldlineFailureMessage(status),
+            String(status?.paymentOutcome || '').toUpperCase() === 'DECLINED'
+              ? 'Payment declined'
+              : 'Payment failed',
+          );
+          return;
+        }
+        // Still pending — classify once more then continue outer loop.
+        const mid = await classifyGatewayOutcome(orderId);
+        if (mid === 'paid' || mid === 'failed') return;
       }
     })();
     return () => {
       signal.aborted = true;
     };
   }, [
-    paymentPending,
-    method,
-    pendingVerifyOrderId,
-    pendingGatewayOrderId,
-    route.params?.orderId,
+    showVerifyingUi,
+    verifyingOrderId,
+    classifyGatewayOutcome,
     settleFromStatusWatch,
+    leaveProcessingForFailed,
   ]);
 
   // Resume / reopen: continue status watch after OTP / app switch, only once
@@ -376,31 +541,38 @@ export default function PaymentScreen() {
       if (action === 'finish_paid' && orderId) {
         const result = await completeGatewayPayment(orderId, '');
         if (result.success && result.order) {
-          await wallet.reloadWallet();
-          goToOrderPlaced(result.order.id, {
+          leaveProcessingForPaid(result.order.id, {
             txnId: result.gatewayTxnId,
             amount: result.order.totalBill,
-            paymentMethodLabel: 'Online',
           });
           return;
         }
+        const classified = await classifyGatewayOutcome(orderId);
+        if (classified === 'paid' || classified === 'failed') return;
       }
       if (action === 'hold' || action === 'finish_paid') {
+        if (orderId) {
+          setPaymentPending(true);
+          setPendingVerifyOrderId(orderId);
+        }
         setUnconfirmed('');
         showToast('Payment is still being verified. Check Orders before paying again.', 'info');
         if (leave) navigation.navigate('Checkout');
         return;
       }
       if (action === 'close_failed') {
-        setUnconfirmed('');
-        if (leave) {
-          showToast('Payment was not completed. You can retry from checkout.', 'err');
-          navigation.navigate('Checkout');
-        }
+        leaveProcessingForFailed(
+          'Payment failed or was declined. No amount was charged. You can retry or choose another method.',
+          'Payment failed',
+        );
         return;
       }
       setUnconfirmed('');
-      showToast('Payment cancelled. No amount has been charged.', 'info');
+      const reason = info?.message?.replace(/[\s.]+$/, '');
+      showToast(
+        reason ? `${reason}. No amount has been charged.` : 'Payment cancelled. No amount has been charged.',
+        'info',
+      );
       if (leave) navigation.navigate('Checkout');
     } finally {
       settlingRef.current = false;
@@ -411,6 +583,7 @@ export default function PaymentScreen() {
   // Back to the method picker. Clear card/WebView UI first.
   const resetToMethodPicker = () => {
     setUnconfirmed('');
+    setFailTitle('Payment failed');
     watchAbortRef.current.aborted = true;
     setGatewayWatching(false);
     if (payState === 'awaiting_gateway' || gatewaySessionPayload) {
@@ -439,6 +612,7 @@ export default function PaymentScreen() {
     if (settlingRef.current) return;
     settlingRef.current = true;
     watchAbortRef.current.aborted = true;
+    setGatewayWatching(false);
     const orderId = pendingGatewayOrderId || activeOrder?.id;
     try {
       if (!orderId) {
@@ -446,6 +620,13 @@ export default function PaymentScreen() {
         navigation.navigate('Checkout');
         return;
       }
+      // WebView only calls onComplete after the return POST finished (or bridge HTML).
+      // Show processing while we poll — do not treat this redirect as paid by itself.
+      setPaymentPending(true);
+      setPendingVerifyOrderId(orderId);
+      setUnconfirmed('');
+      const signed = !!response && shouldSubmitGatewayResponse(response);
+      if (!signed && (await exitIfAlreadyPaid(orderId))) return;
       const result = await completeGatewayPayment(orderId, response ?? url);
       console.log(
         '[paynimo]',
@@ -456,17 +637,19 @@ export default function PaymentScreen() {
         }),
       );
       if (result.success && result.order) {
-        setUnconfirmed('');
-        setPaymentPending(false);
-        setPendingVerifyOrderId(null);
-        goToOrderPlaced(result.order.id, {
+        leaveProcessingForPaid(result.order.id, {
           txnId: result.gatewayTxnId,
           amount: result.order.totalBill,
-          paymentMethodLabel: 'Online',
         });
-        void wallet.reloadWallet();
         return;
       }
+      // The server verified a signed decline or cancel and already re-checked the order.
+      if (signed && !result.success && !result.pendingVerification && result.message) {
+        leaveProcessingForFailed(result.message, worldlineFailureTitle(result.message));
+        return;
+      }
+      const classified = await classifyGatewayOutcome(orderId);
+      if (classified === 'paid' || classified === 'failed') return;
       if (result.pendingVerification) {
         setPaymentPending(true);
         setPendingVerifyOrderId(orderId);
@@ -477,52 +660,95 @@ export default function PaymentScreen() {
         (response?.status as string | undefined) || parseReturnUrl(url).status || '',
       ).toLowerCase();
       if (status === 'cancelled' || status === 'canceled' || status === 'cancel') {
-        showToast('Payment cancelled. No amount has been charged.', 'info');
-        navigation.navigate('Checkout');
+        leaveProcessingForFailed('Payment was cancelled. No amount was charged.', 'Payment cancelled');
         return;
       }
-      setPaymentPending(false);
-      setUnconfirmed(result.message || 'Payment was not completed. You can retry from checkout.');
+      if (status === 'declined' || status === 'failed') {
+        leaveProcessingForFailed(
+          status === 'declined'
+            ? 'Payment declined by the bank. No amount was charged. You can try again or choose another method.'
+            : result.message ||
+                'Payment failed. No amount was charged. You can retry or choose another method.',
+          status === 'declined' ? 'Payment declined' : 'Payment failed',
+        );
+        return;
+      }
+      leaveProcessingForFailed(
+        result.message || 'Payment failed. No amount was charged. You can retry or choose another method.',
+      );
     } finally {
       settlingRef.current = false;
       setGatewayWatching(false);
     }
   };
 
-  if (payState === 'processing' && !checkoutMounted) {
+  if (openingResult) {
     return (
-      <View style={styles.processingWrap}>
-        <ActivityIndicator size="large" color={colors.primary} />
-        <Text style={styles.processingTitle}>Processing your payment…</Text>
-        <Text style={styles.processingSub}>
-          Creating your order and confirming with the gateway. Don’t close this screen.
-        </Text>
-      </View>
+      <ScreenContainer background={colors.white} edges={['top', 'bottom']}>
+        <View style={styles.resultContent}>
+          <View style={[styles.resultBadge, styles.resultBadgeSuccess]}>
+            <AnimatedIcon name="check" motion="pop" playOnMount size={48} color={colors.white} strokeWidth={3} />
+          </View>
+          <Text style={styles.resultTitle}>Payment successful</Text>
+          <Text style={styles.resultSubtitle}>
+            Your order is confirmed. Opening your receipt…
+          </Text>
+          <ActivityIndicator size="small" color={colors.primary} style={{ marginTop: 8 }} />
+        </View>
+      </ScreenContainer>
     );
   }
 
-  if (paymentPending && method === 'online') {
+  if (showVerifyingUi) {
     return (
-      <ScreenContainer background={colors.white}>
+      <ScreenContainer background={colors.white} edges={['top', 'bottom']}>
         <Header title="Payment" onBack={() => navigation.goBack()} />
-        <View style={styles.retryStateWrap}>
-          <StateView
-            kind="empty"
-            title="Payment processing"
-            message="We're confirming your payment with the bank. Do not pay again — this screen updates when the charge is verified."
-            icon="card"
-          />
+        <View style={styles.resultContent}>
+          <View style={[styles.resultBadge, styles.resultBadgePending]}>
+            <ActivityIndicator size="large" color={colors.primary} />
+          </View>
+          <Text style={styles.resultTitle}>Confirming payment</Text>
+          <Text style={styles.resultSubtitle}>
+            We’re checking with the bank. Do not pay again — this updates when the charge is verified,
+            declined, or fails.
+          </Text>
         </View>
         <View style={styles.retryWrap}>
           <PrimaryButton
-            label="Check payment status"
+            label={checkingStatus ? 'Checking…' : 'Check payment status'}
+            disabled={checkingStatus}
             onPress={() => {
-              const orderId = pendingVerifyOrderId || pendingGatewayOrderId || route.params?.orderId;
-              if (orderId) void settleFromStatusWatch(orderId);
+              void runCheckPaymentStatus();
+            }}
+          />
+          <PrimaryButton
+            label="View my orders"
+            kind="ghost"
+            onPress={() => {
+              navigation.reset({
+                index: 1,
+                routes: [{ name: 'Main' }, { name: 'Orders' }],
+              });
             }}
           />
           <Text style={styles.retryNote}>
-            If money was debited, keep this order — do not start another payment.
+            If money was debited, keep this order. Tap Check payment status if nothing changes.
+          </Text>
+        </View>
+      </ScreenContainer>
+    );
+  }
+
+  if (payState === 'processing' && !checkoutMounted) {
+    return (
+      <ScreenContainer background={colors.white} edges={['top', 'bottom']}>
+        <View style={styles.resultContent}>
+          <View style={[styles.resultBadge, styles.resultBadgePending]}>
+            <ActivityIndicator size="large" color={colors.primary} />
+          </View>
+          <Text style={styles.resultTitle}>Starting payment</Text>
+          <Text style={styles.resultSubtitle}>
+            Creating your order and opening the secure bank page. Don’t close this screen.
           </Text>
         </View>
       </ScreenContainer>
@@ -530,22 +756,29 @@ export default function PaymentScreen() {
   }
 
   if (onlineInterruptsMethod(payState, failedMethod, method, unconfirmed)) {
+    const declined = /declin/i.test(failTitle) || /declin/i.test(unconfirmed || '');
     return (
-      <ScreenContainer background={colors.white}>
+      <ScreenContainer background={colors.white} edges={['top', 'bottom']}>
         <Header title="Payment" onBack={() => navigation.goBack()} />
-        <View style={styles.retryStateWrap}>
-          <StateView
-            kind="error"
-            title="Payment failed"
-            message={unconfirmed || payError || 'Something went wrong. Your order was not charged.'}
-            icon="card"
-          />
+        <View style={styles.resultContent}>
+          <View style={[styles.resultBadge, styles.resultBadgeFailed]}>
+            <AnimatedIcon name="x" motion="pop" playOnMount size={44} color={colors.white} strokeWidth={3} />
+          </View>
+          <Text style={styles.resultTitle}>{failTitle || (declined ? 'Payment declined' : 'Payment failed')}</Text>
+          <Text style={styles.resultSubtitle}>
+            {unconfirmed ||
+              payError ||
+              (declined
+                ? 'The bank declined this payment. No amount was charged.'
+                : 'Something went wrong. Your order was not charged.')}
+          </Text>
         </View>
         <View style={styles.retryWrap}>
           <PrimaryButton
             label="Retry payment"
             onPress={() => {
               setUnconfirmed('');
+              setFailTitle('Payment failed');
               setPaymentPending(false);
               retryPayment();
             }}
@@ -650,16 +883,8 @@ export default function PaymentScreen() {
         />
       </View>
 
-      {openingResult ? (
-        <View style={[styles.processingWrap, StyleSheet.absoluteFillObject, { zIndex: 5 }]}>
-          <ActivityIndicator size="large" color={colors.primary} />
-          <Text style={styles.processingTitle}>Payment successful</Text>
-          <Text style={styles.processingSub}>Opening your order…</Text>
-        </View>
-      ) : null}
-
       {checkoutMounted && checkoutPayloadRef.current ? (
-        <WorldlineCheckoutWebView
+        <WorldlineCheckout
           visible={checkoutVisible}
           openAllPaymentModes
           sessionPayload={checkoutPayloadRef.current}
@@ -719,11 +944,39 @@ const styles = StyleSheet.create({
 
   bottomBar: { padding: 16, paddingTop: 6, backgroundColor: colors.white, borderTopWidth: 1, borderTopColor: colors.border },
 
-  processingWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 16, padding: 30, backgroundColor: colors.white },
-  processingTitle: { fontFamily: fontFamily.bold, fontSize: 16, color: colors.text, textAlign: 'center' },
-  processingSub: { fontFamily: fontFamily.semibold, fontSize: 13, color: colors.textMuted, textAlign: 'center', lineHeight: 19, maxWidth: 280 },
+  resultContent: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 28,
+    gap: 12,
+  },
+  resultBadge: {
+    width: 96,
+    height: 96,
+    borderRadius: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 4,
+  },
+  resultBadgeSuccess: { backgroundColor: colors.primary },
+  resultBadgePending: { backgroundColor: colors.statusOnTheWay.bg },
+  resultBadgeFailed: { backgroundColor: colors.danger },
+  resultTitle: {
+    fontFamily: fontFamily.bold,
+    fontSize: 22,
+    color: colors.text,
+    textAlign: 'center',
+  },
+  resultSubtitle: {
+    fontFamily: fontFamily.medium,
+    fontSize: 14,
+    color: colors.textMuted,
+    textAlign: 'center',
+    lineHeight: 20,
+    maxWidth: 300,
+  },
 
-  retryStateWrap: { flex: 1 },
-  retryWrap: { paddingHorizontal: 16, paddingBottom: 16, gap: 10 },
+  retryWrap: { paddingHorizontal: 16, paddingBottom: 20, gap: 10 },
   retryNote: { fontFamily: fontFamily.semibold, fontSize: 11.5, color: colors.textMuted, textAlign: 'center' },
 });

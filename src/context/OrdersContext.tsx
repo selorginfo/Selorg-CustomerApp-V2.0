@@ -31,15 +31,16 @@ import {
 import {
   parseReturnUrl,
   isWorldlinePaidStatus,
-  isWorldlinePendingStatus,
   isWorldlineFailedStatus,
   presentationMessageFromReturn,
   shouldSubmitGatewayResponse,
   gatewayDismissAction,
   retryWhileHeld,
   switchFromOnlineDecision,
+  worldlineFailureMessage,
   type GatewayDismissAction,
 } from '../utils/worldline';
+import { watchWorldlineStatus } from '../utils/worldlineStatusWatch';
 
 export type PayMethod = 'online' | 'cod' | 'wallet';
 
@@ -124,6 +125,12 @@ interface OrdersContextType {
     orderId: string,
     returnUrlOrResponse: string | Record<string, unknown>,
   ) => Promise<PlaceOrderResult>;
+  /**
+   * Fast path for the Payment processing screen: if Worldline status or the
+   * order row already shows capture/confirmation, clear gateway state and
+   * return success so the UI can leave processing immediately.
+   */
+  confirmPaidOrderIfReady: (orderId: string) => Promise<PlaceOrderResult>;
   cancelGatewayPayment: (options?: { bankAuthenticationStarted?: boolean }) => Promise<GatewayDismissAction>;
   retryPayment: () => void;
   /**
@@ -175,7 +182,9 @@ function cartSignature(
 function paymentMethodType(method: PayMethod): PaymentMethodType {
   if (method === 'cod') return 'cash';
   if (method === 'wallet') return 'wallet';
-  return 'upi';
+  // Online opens Paynimo with all instruments — do not stamp the order as UPI
+  // before the customer picks card/UPI. Real instrument is set on mark-paid.
+  return 'digital';
 }
 
 export const OrdersProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
@@ -716,6 +725,75 @@ export const OrdersProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     [],
   );
 
+  const finishPaidLocally = useCallback(
+    (orderId: string, order: Order | undefined, gatewayTxnId?: string): PlaceOrderResult => {
+      const paidOrder = order
+        ? { ...order, paymentStatus: 'paid' as const }
+        : ({ id: orderId, paymentStatus: 'paid' } as Order);
+      unpaidOnlineOrderRef.current = null;
+      setGatewaySessionPayload(null);
+      setPendingGatewayOrderId(null);
+      setPendingGatewayTxnId(null);
+      setPayState('success');
+      setFailedMethod(null);
+      setPayError('');
+      setOrders(prev => [paidOrder, ...prev.filter(o => o.id !== paidOrder.id)]);
+      setActiveOrder(paidOrder);
+      void cart.clearCart();
+      return { success: true, order: paidOrder, gatewayTxnId };
+    },
+    [cart, setPayState],
+  );
+
+  const orderLooksCaptured = useCallback((order: Order): boolean => {
+    if (order.paymentStatus === 'paid') return true;
+    // Fulfillment already started — payment was accepted even if a stale
+    // paymentStatus field briefly lags on the client.
+    return ['confirmed', 'getting-packed', 'on-the-way', 'arrived', 'delivered'].includes(order.status);
+  }, []);
+
+  const confirmPaidOrderIfReady = useCallback(
+    async (orderId: string): Promise<PlaceOrderResult> => {
+      let gatewayTxnId = pendingGatewayTxnId || undefined;
+      try {
+        const status = await paymentsApi.getWorldlineStatus(orderId, { timeoutMs: 12000 });
+        const latestTxn = status.latestPayment?.txnId;
+        if (latestTxn) gatewayTxnId = String(latestTxn);
+        if (isWorldlinePaidStatus(status)) {
+          let order: Order | undefined;
+          try {
+            order = toLocalOrder(await ordersApi.getOrder(orderId));
+          } catch {
+            /* status already paid */
+          }
+          return finishPaidLocally(orderId, order, gatewayTxnId);
+        }
+      } catch {
+        /* fall through to order lookup */
+      }
+
+      try {
+        const order = toLocalOrder(await ordersApi.getOrder(orderId));
+        if (orderLooksCaptured(order)) {
+          return finishPaidLocally(orderId, order, gatewayTxnId);
+        }
+        return {
+          success: false,
+          pendingVerification: true,
+          message: 'Payment is still being verified. Check Orders before paying again.',
+          order,
+        };
+      } catch (err: unknown) {
+        return {
+          success: false,
+          pendingVerification: true,
+          message: getErrorMessage(err, 'Payment is still being verified. Check Orders before paying again.'),
+        };
+      }
+    },
+    [finishPaidLocally, orderLooksCaptured, pendingGatewayTxnId],
+  );
+
   const completeGatewayPayment = useCallback(
     async (orderId: string, returnUrlOrResponse: string | Record<string, unknown>): Promise<PlaceOrderResult> => {
       const response =
@@ -731,6 +809,13 @@ export const OrdersProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       }
       setPayError('');
       try {
+        // Without a signed body, the return POST may already have captured. A signed body
+        // goes straight to /complete, which keeps a settled row as it is.
+        if (!submittingGateway) {
+          const already = await confirmPaidOrderIfReady(orderId);
+          if (already.success) return already;
+        }
+
         // A redirect (`paynimo_bridge=1` or a bare return URL) is not a capture.
         // Posting it to /complete can overwrite a good payment. Only raw gateway
         // crypto fields are submitted. Paid is decided by /worldline/status.
@@ -741,69 +826,59 @@ export const OrdersProvider: React.FC<{ children: ReactNode }> = ({ children }) 
             response,
           });
         } else {
-          // The return POST is handled by the API. Give that a moment, then poll.
-          await new Promise<void>(r => setTimeout(() => r(), 800));
+          // Card OTP return POST can take a few seconds after the WebView closes.
+          await new Promise<void>(r => setTimeout(() => r(), 1500));
         }
 
         let paid = false;
         let failed = false;
         let sawStatus = false;
-        for (let i = 0; i < 12; i += 1) {
-          try {
-            const status = await paymentsApi.getWorldlineStatus(orderId, { timeoutMs: 12000 });
-            sawStatus = true;
-            if (isWorldlinePaidStatus(status)) {
-              paid = true;
-              break;
-            }
-            if (isWorldlineFailedStatus(status)) {
-              failed = true;
-              break;
-            }
-            if (!isWorldlinePendingStatus(status)) break;
-          } catch {
-            // Network blip — keep polling; never treat silence as decline.
-          }
-          await new Promise<void>(r => setTimeout(() => r(), 1500));
+        let gatewayTxnId = pendingGatewayTxnId || undefined;
+        // Poll status AND re-check the order row each tick — Admin/Web may already
+        // show confirmed while Worldline uiState briefly lags.
+        const watched = await watchWorldlineStatus({
+          orderId,
+          initialDelayMs: 0,
+          intervalMs: 1500,
+          maxAttempts: 40,
+          onStatus: status => {
+            if (status.latestPayment?.txnId) gatewayTxnId = String(status.latestPayment.txnId);
+          },
+        });
+        if (watched.status) {
+          sawStatus = true;
+          const latestTxn = watched.status.latestPayment?.txnId;
+          if (latestTxn) gatewayTxnId = String(latestTxn);
+          if (watched.outcome === 'paid' || isWorldlinePaidStatus(watched.status)) paid = true;
+          else if (watched.outcome === 'failed' || isWorldlineFailedStatus(watched.status)) failed = true;
         }
 
         let order: Order | undefined;
         try {
           const detail = await ordersApi.getOrder(orderId);
           order = toLocalOrder(detail);
+          if (orderLooksCaptured(order)) paid = true;
           if (paid) order.paymentStatus = 'paid';
-          setOrders(prev => [order!, ...prev.filter(o => o.id !== order!.id)]);
-          setActiveOrder(order);
         } catch {
           if (paid) {
-            // Status already confirmed paid — do not fail the customer on a detail fetch blip.
-            setPayState('success');
-            setFailedMethod(null);
-            setGatewaySessionPayload(null);
-            setPendingGatewayOrderId(null);
-            setPendingGatewayTxnId(null);
-            unpaidOnlineOrderRef.current = null;
-            void cart.clearCart();
-            return {
-              success: true,
-              order: { id: orderId, paymentStatus: 'paid' } as Order,
-              gatewayTxnId: pendingGatewayTxnId || undefined,
-            };
+            return finishPaidLocally(orderId, undefined, gatewayTxnId);
           }
         }
+
+        if (paid) {
+          return finishPaidLocally(orderId, order, gatewayTxnId);
+        }
+
+        // One more status/order pass before leaving the customer on processing. A signed
+        // failure the server has just verified, with the order still unpaid, needs no second pass.
+        const verifiedFailure = submittingGateway && sawStatus && failed;
+        const retry = verifiedFailure ? null : await confirmPaidOrderIfReady(orderId);
+        if (retry?.success) return retry;
 
         setGatewaySessionPayload(null);
         setPendingGatewayOrderId(null);
         setPendingGatewayTxnId(null);
-        if (paid) {
-          unpaidOnlineOrderRef.current = null;
-          setPayState('success');
-          setFailedMethod(null);
-          void cart.clearCart();
-          return { success: true, order, gatewayTxnId: pendingGatewayTxnId || undefined };
-        }
         if (!sawStatus || !failed) {
-          // Still created, pending, unknown, or status unreachable. Never hard-fail.
           if (!unpaidOnlineOrderRef.current) {
             unpaidOnlineOrderRef.current = { id: orderId, signature: `resume:${orderId}` };
           }
@@ -814,16 +889,18 @@ export const OrdersProvider: React.FC<{ children: ReactNode }> = ({ children }) 
             success: false,
             pendingVerification: true,
             message: 'Payment is still being verified. Check Orders before paying again.',
-            order,
+            order: retry?.order || order,
           };
         }
         setPayState('failed');
         setFailedMethod('online');
-        const msg = bridgeHint || 'Payment was not completed. You can retry from checkout.';
+        const msg = bridgeHint || worldlineFailureMessage(watched.status);
         setPayError(msg);
         return { success: false, message: msg, order };
       } catch (err: unknown) {
         // Outer errors (complete POST, unexpected) must not look like a bank decline.
+        const recovered = await confirmPaidOrderIfReady(orderId).catch(() => null);
+        if (recovered?.success) return recovered;
         if (!unpaidOnlineOrderRef.current) {
           unpaidOnlineOrderRef.current = { id: orderId, signature: `resume:${orderId}` };
         }
@@ -837,7 +914,7 @@ export const OrdersProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         };
       }
     },
-    [cart, pendingGatewayTxnId],
+    [cart, confirmPaidOrderIfReady, finishPaidLocally, orderLooksCaptured, pendingGatewayTxnId],
   );
 
   const cancelGatewayPayment = useCallback(
@@ -1008,6 +1085,7 @@ export const OrdersProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       placeOrder,
       payExistingOrder,
       completeGatewayPayment,
+      confirmPaidOrderIfReady,
       cancelGatewayPayment,
       retryPayment,
       prepareFreshPaymentSession,
@@ -1035,6 +1113,7 @@ export const OrdersProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       placeOrder,
       payExistingOrder,
       completeGatewayPayment,
+      confirmPaidOrderIfReady,
       cancelGatewayPayment,
       retryPayment,
       prepareFreshPaymentSession,

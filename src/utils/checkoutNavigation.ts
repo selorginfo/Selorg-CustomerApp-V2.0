@@ -147,7 +147,11 @@ export function shouldRecoverBlankGatewayPage(
   if (isIssuerAuthenticationUrl(raw)) return false;
   const host = httpHost(raw);
   if (!host) return false;
-  if (isWorldlineReturnUrl(raw) || isPaymentResultHandoffUrl(raw)) return true;
+  // Handoff means the API already accepted the gateway POST — safe to leave.
+  // The merchant return URL itself must stay mounted until that POST finishes;
+  // tearing it down early cancels the body and leaves rawGatewayReturn null.
+  if (isPaymentResultHandoffUrl(raw)) return true;
+  if (isWorldlineReturnUrl(raw)) return false;
   // Empty Paynimo shell after the card GET left checkout = stuck Secure Payment.
   if (host === 'paynimo.com' || host.endsWith('.paynimo.com')) return true;
   if (isSelorgHost(host)) return progress.blankForMs >= 1500;

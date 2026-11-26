@@ -85,6 +85,28 @@ describe('checkout navigation', () => {
     expect(shouldRecoverBlankGatewayPage('https://www.paynimo.com/', 0, false)).toBe(false);
   });
 
+  it('keeps the merchant return URL mounted so the POST body can reach the API', () => {
+    const apiReturn = 'https://api.selorg.com/api/v1/customer/payments/worldline/return';
+    expect(
+      shouldRecoverBlankGatewayPage(apiReturn, 0, {
+        gatewayStarted: true,
+        sawIssuer: true,
+        sawGatewayContent: true,
+        leftPaintedDocument: true,
+        blankForMs: 5000,
+      }),
+    ).toBe(false);
+    expect(
+      shouldRecoverBlankGatewayPage('https://www.selorg.com/checkout/payment?paynimo_bridge=1', 0, {
+        gatewayStarted: true,
+        sawIssuer: true,
+        sawGatewayContent: true,
+        leftPaintedDocument: true,
+        blankForMs: 0,
+      }),
+    ).toBe(true);
+  });
+
   it('leaves the blank sheet after OTP without closing a live card or OTP page', () => {
     const tpsl = 'https://www.tpsl-india.in/PaymentGateway/txnreqcardvern.pg';
     const acs = 'https://acs.hdfcbank.com/acs/auth';

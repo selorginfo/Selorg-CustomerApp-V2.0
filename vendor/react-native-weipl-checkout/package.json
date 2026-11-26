@@ -1,0 +1,19 @@
+{
+  "name": "react-native-weipl-checkout",
+  "version": "1.0.3",
+  "description": "Worldline ePayments India Checkout for React Native. Unmodified npm 1.0.3 sources; only this package.json is trimmed, because the published one lists the package as its own file: dependency, which breaks npm install.",
+  "main": "lib/commonjs/index",
+  "module": "lib/module/index",
+  "react-native": "src/index",
+  "source": "src/index",
+  "license": "MIT",
+  "author": "Worldline ePayments India",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Worldline-ePayments-India/react-native-weipl-checkout.git"
+  },
+  "peerDependencies": {
+    "react": "*",
+    "react-native": "*"
+  }
+}

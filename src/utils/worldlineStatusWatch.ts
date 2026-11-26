@@ -1,4 +1,5 @@
 import { paymentsApi, type WorldlineStatus } from '../services/payments.service';
+import { ordersApi } from '../services/orders.service';
 import {
   isWorldlineFailedStatus,
   isWorldlinePaidStatus,
@@ -19,10 +20,18 @@ export interface WorldlineStatusWatchOptions {
   onStatus?: (status: WorldlineStatus) => void;
 }
 
+const CAPTURED_ORDER_STATUSES = new Set([
+  'confirmed',
+  'getting-packed',
+  'on-the-way',
+  'arrived',
+  'delivered',
+]);
+
 /**
  * Poll GET /payments/worldline/status until paid, failed, or exhausted.
- * Used while the Secure Payment WebView is still open so a blank bank page
- * cannot hide a capture the server already recorded.
+ * Also checks GET /orders/:id every other tick so a confirmed order cannot
+ * leave the customer stuck on Payment processing when status uiState lags.
  */
 export async function watchWorldlineStatus(
   options: WorldlineStatusWatchOptions,
@@ -68,6 +77,29 @@ export async function watchWorldlineStatus(
     } catch {
       // Network blip — keep trying until maxAttempts.
     }
+
+    // Every other poll, trust the order document (Admin/Web source of truth).
+    if (attempt % 2 === 1) {
+      try {
+        const order = await ordersApi.getOrder(orderId);
+        const pay = String(order.paymentStatus || '').toLowerCase();
+        const st = String(order.status || '').toLowerCase();
+        if (pay === 'paid' || CAPTURED_ORDER_STATUSES.has(st)) {
+          return {
+            outcome: 'paid',
+            status: last || {
+              orderId,
+              orderPaymentStatus: 'paid',
+              paymentStatus: 'paid',
+              uiState: 'PAID',
+            },
+          };
+        }
+      } catch {
+        /* ignore — status poll remains primary */
+      }
+    }
+
     await sleep(intervalMs);
   }
   return { outcome: 'pending', status: last };

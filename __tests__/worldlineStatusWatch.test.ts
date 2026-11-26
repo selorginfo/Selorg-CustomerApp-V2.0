@@ -6,13 +6,23 @@ jest.mock('../src/services/payments.service', () => ({
   },
 }));
 
+jest.mock('../src/services/orders.service', () => ({
+  ordersApi: {
+    getOrder: jest.fn(),
+  },
+}));
+
 import { paymentsApi } from '../src/services/payments.service';
+import { ordersApi } from '../src/services/orders.service';
 
 const getStatus = paymentsApi.getWorldlineStatus as jest.Mock;
+const getOrder = ordersApi.getOrder as jest.Mock;
 
 describe('watchWorldlineStatus', () => {
   beforeEach(() => {
     getStatus.mockReset();
+    getOrder.mockReset();
+    getOrder.mockResolvedValue({ paymentStatus: 'pending', status: 'pending' });
   });
 
   it('returns paid when the server reports PAID', async () => {
@@ -25,6 +35,40 @@ describe('watchWorldlineStatus', () => {
     });
     expect(result.outcome).toBe('paid');
     expect(getStatus).toHaveBeenCalledWith('ord-1', { timeoutMs: 12000 });
+  });
+
+  it('returns paid when order is paid but latest attempt ui looks cancelled', async () => {
+    getStatus.mockResolvedValueOnce({
+      orderPaymentStatus: 'paid',
+      paymentStatus: 'paid',
+      uiState: 'RETRY_AVAILABLE',
+      paymentOutcome: 'CANCELLED',
+      latestPayment: { status: 'cancelled', verificationError: 'none' },
+    });
+    const result = await watchWorldlineStatus({
+      orderId: 'ord-paid-noisy',
+      initialDelayMs: 0,
+      intervalMs: 1,
+      maxAttempts: 3,
+    });
+    expect(result.outcome).toBe('paid');
+  });
+
+  it('returns paid when order document is already confirmed', async () => {
+    getStatus
+      .mockResolvedValueOnce({ uiState: 'PENDING_VERIFICATION', paymentStatus: 'pending' })
+      .mockResolvedValueOnce({ uiState: 'PENDING_VERIFICATION', paymentStatus: 'pending' });
+    getOrder.mockResolvedValueOnce({ paymentStatus: 'pending', status: 'pending' }).mockResolvedValueOnce({
+      paymentStatus: 'paid',
+      status: 'confirmed',
+    });
+    const result = await watchWorldlineStatus({
+      orderId: 'ord-confirmed',
+      initialDelayMs: 0,
+      intervalMs: 1,
+      maxAttempts: 4,
+    });
+    expect(result.outcome).toBe('paid');
   });
 
   it('returns failed when the server reports FAILED', async () => {

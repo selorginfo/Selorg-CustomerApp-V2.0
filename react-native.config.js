@@ -6,5 +6,9 @@ module.exports = {
       packageName: 'com.selorg.com',
     },
   },
+  dependencies: {
+    // Android only. iOS keeps the hosted WebView checkout.
+    'react-native-weipl-checkout': { platforms: { ios: null } },
+  },
   assets: ['./assets/fonts/'],
 };
