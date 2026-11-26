@@ -118,5 +118,8 @@ export function toLocalOrder(raw: ApiOrder): Order {
     })),
     // Already rated on the server — the app must not offer a second rating.
     reviewAsked: Number(raw.ratingScore) > 0,
+    cancellationReason: String(raw.cancellationReason || ''),
+    cancelledAt: raw.cancelledAt ? String(raw.cancelledAt) : null,
+    cancellationSource: raw.cancellationSource ? String(raw.cancellationSource) : null,
   };
 }

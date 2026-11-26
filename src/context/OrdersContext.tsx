@@ -93,6 +93,9 @@ export interface Order {
   placedAt: string | number;
   timeline: TimelineEntry[];
   reviewAsked?: boolean;
+  cancellationReason?: string;
+  cancelledAt?: string | null;
+  cancellationSource?: string | null;
 }
 
 interface PlaceOrderResult {

@@ -26,14 +26,28 @@ export default function OrderTimeline({ order, compact = false }: Props) {
   const cancelled = order.status === 'cancelled';
 
   if (cancelled) {
+    const reason = String(order.cancellationReason || '').trim();
+    const system =
+      String(order.cancellationSource || '').toUpperCase() === 'SYSTEM' ||
+      reason.startsWith('AUTO_CANCELLED_');
+    const reasonLabel =
+      reason === 'AUTO_CANCELLED_NO_PICKER_OR_RIDER_WITHIN_30_MINUTES'
+        ? 'No picker or rider accepted within 30 minutes'
+        : reason === 'AUTO_CANCELLED_EXCEEDED_60_MINUTES'
+          ? 'Not delivered within 60 minutes of placement'
+          : reason || null;
     return (
       <View style={styles.cancelledRow}>
         <View style={styles.cancelledDot}>
           <Icon name="x" size={16} color={colors.danger} strokeWidth={2.6} />
         </View>
         <View style={styles.flex1}>
-          <Text style={styles.cancelledTitle}>Order cancelled</Text>
-          <Text style={styles.cancelledSub}>Refund initiated if applicable</Text>
+          <Text style={styles.cancelledTitle}>
+            {system ? 'Order automatically cancelled' : 'Order cancelled'}
+          </Text>
+          <Text style={styles.cancelledSub}>
+            {reasonLabel || 'Refund initiated if applicable'}
+          </Text>
         </View>
       </View>
     );
