@@ -7,36 +7,38 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		0B697DEC1FC2466D9BAD0168 /* Poppins-SemiBold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 1C81DFE9FAE94EEA906E7F83 /* Poppins-SemiBold.ttf */; };
 		0C80B921A6F3F58F76C31292 /* libPods-Selorg.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 5DCACB8F33CDC322A6C60F78 /* libPods-Selorg.a */; };
 		13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 13B07FB51A68108700A75B9A /* Images.xcassets */; };
+		F1A2B3C51A68108700A75B9B /* GoogleService-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = F1A2B3C41A68108700A75B9B /* GoogleService-Info.plist */; };
 		36090FF40FE589EE5CBFD845 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 13B07FB81A68108700A75B9A /* PrivacyInfo.xcprivacy */; };
+		480B085BBEE34107BFEDA9E1 /* Poppins-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 3634C79285A24F02B39611A1 /* Poppins-Regular.ttf */; };
+		5B3872F340E14943AABEA170 /* OFL.txt in Resources */ = {isa = PBXBuildFile; fileRef = 58E9544449924DF59D7EE14D /* OFL.txt */; };
 		761780ED2CA45674006654EE /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 761780EC2CA45674006654EE /* AppDelegate.swift */; };
 		81AB9BB82411601600AC10FF /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 81AB9BB72411601600AC10FF /* LaunchScreen.storyboard */; };
 		8F7F26F651DB4EEBA4E78CC6 /* Poppins-Medium.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 418C232074F244348FFB4AAE /* Poppins-Medium.ttf */; };
-		480B085BBEE34107BFEDA9E1 /* Poppins-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 3634C79285A24F02B39611A1 /* Poppins-Regular.ttf */; };
 		ACD30A9D90EC451592FF2AE7 /* Poppins-Bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = C2F9AF0304D348BBB5590DF4 /* Poppins-Bold.ttf */; };
-		0B697DEC1FC2466D9BAD0168 /* Poppins-SemiBold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 1C81DFE9FAE94EEA906E7F83 /* Poppins-SemiBold.ttf */; };
-		5B3872F340E14943AABEA170 /* OFL.txt in Resources */ = {isa = PBXBuildFile; fileRef = 58E9544449924DF59D7EE14D /* OFL.txt */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
 		13B07F961A680F5B00A75B9A /* Selorg.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Selorg.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		13B07FB51A68108700A75B9A /* Images.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; name = Images.xcassets; path = Selorg/Images.xcassets; sourceTree = "<group>"; };
 		13B07FB61A68108700A75B9A /* Info.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; name = Info.plist; path = Selorg/Info.plist; sourceTree = "<group>"; };
+		F1A2B3C41A68108700A75B9B /* GoogleService-Info.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; name = "GoogleService-Info.plist"; path = "Selorg/GoogleService-Info.plist"; sourceTree = "<group>"; };
 		13B07FB81A68108700A75B9A /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; name = PrivacyInfo.xcprivacy; path = Selorg/PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		1C81DFE9FAE94EEA906E7F83 /* Poppins-SemiBold.ttf */ = {isa = PBXFileReference; explicitFileType = undefined; fileEncoding = undefined; includeInIndex = 0; lastKnownFileType = unknown; name = "Poppins-SemiBold.ttf"; path = "../assets/fonts/Poppins-SemiBold.ttf"; sourceTree = "<group>"; };
+		3634C79285A24F02B39611A1 /* Poppins-Regular.ttf */ = {isa = PBXFileReference; explicitFileType = undefined; fileEncoding = undefined; includeInIndex = 0; lastKnownFileType = unknown; name = "Poppins-Regular.ttf"; path = "../assets/fonts/Poppins-Regular.ttf"; sourceTree = "<group>"; };
 		3B4392A12AC88292D35C810B /* Pods-Selorg.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Selorg.debug.xcconfig"; path = "Target Support Files/Pods-Selorg/Pods-Selorg.debug.xcconfig"; sourceTree = "<group>"; };
-		D11111112AC88292D35C810B /* Debug.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; name = Debug.xcconfig; path = Selorg/Debug.xcconfig; sourceTree = "<group>"; };
-		D22222222AC88292D35C810B /* Release.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; name = Release.xcconfig; path = Selorg/Release.xcconfig; sourceTree = "<group>"; };
+		418C232074F244348FFB4AAE /* Poppins-Medium.ttf */ = {isa = PBXFileReference; explicitFileType = undefined; fileEncoding = undefined; includeInIndex = 0; lastKnownFileType = unknown; name = "Poppins-Medium.ttf"; path = "../assets/fonts/Poppins-Medium.ttf"; sourceTree = "<group>"; };
 		5709B34CF0A7D63546082F79 /* Pods-Selorg.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Selorg.release.xcconfig"; path = "Target Support Files/Pods-Selorg/Pods-Selorg.release.xcconfig"; sourceTree = "<group>"; };
+		58E9544449924DF59D7EE14D /* OFL.txt */ = {isa = PBXFileReference; explicitFileType = undefined; fileEncoding = undefined; includeInIndex = 0; lastKnownFileType = unknown; name = OFL.txt; path = ../assets/fonts/OFL.txt; sourceTree = "<group>"; };
 		5DCACB8F33CDC322A6C60F78 /* libPods-Selorg.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-Selorg.a"; sourceTree = BUILT_PRODUCTS_DIR; };
 		761780EC2CA45674006654EE /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AppDelegate.swift; path = Selorg/AppDelegate.swift; sourceTree = "<group>"; };
 		81AB9BB72411601600AC10FF /* LaunchScreen.storyboard */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = file.storyboard; name = LaunchScreen.storyboard; path = Selorg/LaunchScreen.storyboard; sourceTree = "<group>"; };
+		C2F9AF0304D348BBB5590DF4 /* Poppins-Bold.ttf */ = {isa = PBXFileReference; explicitFileType = undefined; fileEncoding = undefined; includeInIndex = 0; lastKnownFileType = unknown; name = "Poppins-Bold.ttf"; path = "../assets/fonts/Poppins-Bold.ttf"; sourceTree = "<group>"; };
+		D11111112AC88292D35C810B /* Debug.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; name = Debug.xcconfig; path = Selorg/Debug.xcconfig; sourceTree = "<group>"; };
+		D22222222AC88292D35C810B /* Release.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; name = Release.xcconfig; path = Selorg/Release.xcconfig; sourceTree = "<group>"; };
 		ED297162215061F000B7C4FE /* JavaScriptCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = JavaScriptCore.framework; path = System/Library/Frameworks/JavaScriptCore.framework; sourceTree = SDKROOT; };
-		418C232074F244348FFB4AAE /* Poppins-Medium.ttf */ = {isa = PBXFileReference; name = "Poppins-Medium.ttf"; path = "../assets/fonts/Poppins-Medium.ttf"; sourceTree = "<group>"; fileEncoding = undefined; lastKnownFileType = unknown; explicitFileType = undefined; includeInIndex = 0; };
-		3634C79285A24F02B39611A1 /* Poppins-Regular.ttf */ = {isa = PBXFileReference; name = "Poppins-Regular.ttf"; path = "../assets/fonts/Poppins-Regular.ttf"; sourceTree = "<group>"; fileEncoding = undefined; lastKnownFileType = unknown; explicitFileType = undefined; includeInIndex = 0; };
-		C2F9AF0304D348BBB5590DF4 /* Poppins-Bold.ttf */ = {isa = PBXFileReference; name = "Poppins-Bold.ttf"; path = "../assets/fonts/Poppins-Bold.ttf"; sourceTree = "<group>"; fileEncoding = undefined; lastKnownFileType = unknown; explicitFileType = undefined; includeInIndex = 0; };
-		1C81DFE9FAE94EEA906E7F83 /* Poppins-SemiBold.ttf */ = {isa = PBXFileReference; name = "Poppins-SemiBold.ttf"; path = "../assets/fonts/Poppins-SemiBold.ttf"; sourceTree = "<group>"; fileEncoding = undefined; lastKnownFileType = unknown; explicitFileType = undefined; includeInIndex = 0; };
-		58E9544449924DF59D7EE14D /* OFL.txt */ = {isa = PBXFileReference; name = "OFL.txt"; path = "../assets/fonts/OFL.txt"; sourceTree = "<group>"; fileEncoding = undefined; lastKnownFileType = unknown; explicitFileType = undefined; includeInIndex = 0; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -57,6 +59,7 @@
 				13B07FB51A68108700A75B9A /* Images.xcassets */,
 				761780EC2CA45674006654EE /* AppDelegate.swift */,
 				13B07FB61A68108700A75B9A /* Info.plist */,
+				F1A2B3C41A68108700A75B9B /* GoogleService-Info.plist */,
 				81AB9BB72411601600AC10FF /* LaunchScreen.storyboard */,
 				13B07FB81A68108700A75B9A /* PrivacyInfo.xcprivacy */,
 				D11111112AC88292D35C810B /* Debug.xcconfig */,
@@ -104,17 +107,8 @@
 			name = Products;
 			sourceTree = "<group>";
 		};
-		BBD78D7AC51CEA395F1C20DB /* Pods */ = {
-			isa = PBXGroup;
-			children = (
-				3B4392A12AC88292D35C810B /* Pods-Selorg.debug.xcconfig */,
-				5709B34CF0A7D63546082F79 /* Pods-Selorg.release.xcconfig */,
-			);
-			path = Pods;
-			sourceTree = "<group>";
-		};
 		9B7A735777A94F8CA909870C /* Resources */ = {
-			isa = "PBXGroup";
+			isa = PBXGroup;
 			children = (
 				418C232074F244348FFB4AAE /* Poppins-Medium.ttf */,
 				3634C79285A24F02B39611A1 /* Poppins-Regular.ttf */,
@@ -123,8 +117,17 @@
 				58E9544449924DF59D7EE14D /* OFL.txt */,
 			);
 			name = Resources;
-			sourceTree = "<group>";
 			path = "";
+			sourceTree = "<group>";
+		};
+		BBD78D7AC51CEA395F1C20DB /* Pods */ = {
+			isa = PBXGroup;
+			children = (
+				3B4392A12AC88292D35C810B /* Pods-Selorg.debug.xcconfig */,
+				5709B34CF0A7D63546082F79 /* Pods-Selorg.release.xcconfig */,
+			);
+			path = Pods;
+			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
 
@@ -190,6 +193,7 @@
 			files = (
 				81AB9BB82411601600AC10FF /* LaunchScreen.storyboard in Resources */,
 				13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */,
+				F1A2B3C51A68108700A75B9B /* GoogleService-Info.plist in Resources */,
 				36090FF40FE589EE5CBFD845 /* PrivacyInfo.xcprivacy in Resources */,
 				8F7F26F651DB4EEBA4E78CC6 /* Poppins-Medium.ttf in Resources */,
 				480B085BBEE34107BFEDA9E1 /* Poppins-Regular.ttf in Resources */,
@@ -218,21 +222,6 @@
 			shellPath = /bin/sh;
 			shellScript = "set -e\n\nWITH_ENVIRONMENT=\"$REACT_NATIVE_PATH/scripts/xcode/with-environment.sh\"\nREACT_NATIVE_XCODE=\"$REACT_NATIVE_PATH/scripts/react-native-xcode.sh\"\n\n/bin/sh -c \"\\\"$WITH_ENVIRONMENT\\\" \\\"$REACT_NATIVE_XCODE\\\"\"\n";
 		};
-		A7C3E91B2D4F608192A3B4C5 /* Require Maps key for Release */ = {
-			isa = PBXShellScriptBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			inputPaths = (
-				"$(SRCROOT)/Selorg/Secrets.xcconfig",
-			);
-			name = "Require Maps key for Release";
-			outputPaths = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-			shellPath = /bin/sh;
-			shellScript = "if [ \"${CONFIGURATION}\" != \"Release\" ]; then\n  exit 0\nfi\nKEY_FILE=\"${SRCROOT}/Selorg/Secrets.xcconfig\"\nKEY=$(grep -E '^GOOGLE_MAPS_API_KEY[[:space:]]*=' \"$KEY_FILE\" 2>/dev/null | head -n 1 | cut -d= -f2- | tr -d '[:space:]\"')\nif [ -z \"$KEY\" ]; then\n  echo \"error: Release build needs GOOGLE_MAPS_API_KEY in ios/Selorg/Secrets.xcconfig. Copy Secrets.xcconfig.example and set the key.\" >&2\n  exit 1\nfi\n";
-		};
 		00EEFC60759A1932668264C0 /* [CP] Embed Pods Frameworks */ = {
 			isa = PBXShellScriptBuildPhase;
 			buildActionMask = 2147483647;
@@ -249,6 +238,21 @@
 			shellPath = /bin/sh;
 			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-Selorg/Pods-Selorg-frameworks.sh\"\n";
 			showEnvVarsInLog = 0;
+		};
+		A7C3E91B2D4F608192A3B4C5 /* Require Maps key for Release */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+				"$(SRCROOT)/Selorg/Secrets.xcconfig",
+			);
+			name = "Require Maps key for Release";
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "if [ \"${CONFIGURATION}\" != \"Release\" ]; then\n  exit 0\nfi\nKEY_FILE=\"${SRCROOT}/Selorg/Secrets.xcconfig\"\nKEY=$(grep -E '^GOOGLE_MAPS_API_KEY[[:space:]]*=' \"$KEY_FILE\" 2>/dev/null | head -n 1 | cut -d= -f2- | tr -d '[:space:]\"')\nif [ -z \"$KEY\" ]; then\n  echo \"error: Release build needs GOOGLE_MAPS_API_KEY in ios/Selorg/Secrets.xcconfig. Copy Secrets.xcconfig.example and set the key.\" >&2\n  exit 1\nfi\n";
 		};
 		B51AF8CD96DE934E7AB86F58 /* [CP-User] [RNFB] Core Configuration */ = {
 			isa = PBXShellScriptBuildPhase;
@@ -322,9 +326,9 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_ENTITLEMENTS = Selorg/Selorg.entitlements;
 				CURRENT_PROJECT_VERSION = 1;
 				ENABLE_BITCODE = NO;
-				CODE_SIGN_ENTITLEMENTS = Selorg/Selorg.entitlements;
 				INFOPLIST_FILE = Selorg/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 15.1;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -351,8 +355,8 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
-				CURRENT_PROJECT_VERSION = 1;
 				CODE_SIGN_ENTITLEMENTS = Selorg/SelorgRelease.entitlements;
+				CURRENT_PROJECT_VERSION = 1;
 				INFOPLIST_FILE = Selorg/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 15.1;
 				LD_RUNPATH_SEARCH_PATHS = (

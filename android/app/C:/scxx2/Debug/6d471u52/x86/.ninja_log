@@ -1,0 +1,8 @@
+# ninja log v5
+0	9	0	/Users/muthuramanveerashekar/Desktop/Selorg Final/Selorg-CustomerApp-V2.0/android/app/C:/scxx2/Debug/6d471u52/x86/CMakeFiles/cmake.verify_globs	6a1935f2541cf82a
+2	1763	1795592432627359173	RNFastImageSpec_autolinked_build/CMakeFiles/react_codegen_RNFastImageSpec.dir/react/renderer/components/RNFastImageSpec/States.cpp.o	7bf11462904d7b38
+3	2125	1795592432982485225	AsyncStorageSpec_autolinked_build/CMakeFiles/react_codegen_AsyncStorageSpec.dir/react/renderer/components/AsyncStorageSpec/EventEmitters.cpp.o	6c56e7c528441e50
+2	2765	1795592433620373105	RNFastImageSpec_autolinked_build/CMakeFiles/react_codegen_RNFastImageSpec.dir/react/renderer/components/RNFastImageSpec/EventEmitters.cpp.o	2f496986042332bc
+2	2887	1795592433743789069	AsyncStorageSpec_autolinked_build/CMakeFiles/react_codegen_AsyncStorageSpec.dir/AsyncStorageSpec-generated.cpp.o	9e752ed4bdf5404f
+2	2954	1795592433809522313	RNFastImageSpec_autolinked_build/CMakeFiles/react_codegen_RNFastImageSpec.dir/RNFastImageSpec-generated.cpp.o	3503287174434816
+4	3220	1795592434077587305	AsyncStorageSpec_autolinked_build/CMakeFiles/react_codegen_AsyncStorageSpec.dir/react/renderer/components/AsyncStorageSpec/Props.cpp.o	e754d89f1a80d787
